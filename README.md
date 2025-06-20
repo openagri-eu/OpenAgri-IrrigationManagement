@@ -1,7 +1,7 @@
 # Irrigation service
 
-*"This service was created in the context of OpenAgri project (https://horizon-openagri.eu/). OpenAgri has received funding from the EU’s Horizon Europe research and innovation programme under Grant Agreement no. 101134083."*
-
+*"This service was created in the context of OpenAgri project (https://horizon-openagri.eu/). OpenAgri has received funding from the EU’s Horizon Europe research and innovation programme under Grant Agreement no. 101134083."* \
+![eu_flag](https://flagcdn.com/w80/eu.png)
 # Description
 
 The OpenAgri Irrigation service provides the calculation of referent evapotranspiration (ETo) as well as the analysis of \
