@@ -67,5 +67,5 @@ For a more detailed view of the APIs, checkout [API.md](API.md).
 Please contact the maintainer of this repository.
 
 # License
-This project code is licensed under the EUPL 1.2 license, see the [LICENSE](https://github.com/agstack/irrigation-management/blob/main/LICENSE) file for more details.
+This project code is licensed under the EUPL 1.2 license, see the [LICENSE](https://github.com/agstack/OpenAgri-IrrigationManagement/blob/main/LICENSE) file for more details.
 Please note that each service may have different licenses, which can be found their specific source code repository.
