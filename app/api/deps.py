@@ -1,12 +1,6 @@
 from typing import Generator
-
-import requests
-
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
-import jwt
-from pydantic import ValidationError
-from requests import RequestException
 from sqlalchemy.orm import Session
 
 from core import decode_token
@@ -15,7 +9,6 @@ from crud import user
 
 from core.config import settings
 from db.session import SessionLocal
-from schemas import Token
 
 reusable_oauth2 = OAuth2PasswordBearer(tokenUrl="/api/v1/login/access-token/")
 
@@ -29,7 +22,7 @@ def get_db() -> Generator:
 
 
 def get_jwt(
-        token: Token = Depends(reusable_oauth2)
+        token: str = Depends(reusable_oauth2)
 ):
     if not token:
         raise HTTPException(
@@ -42,11 +35,11 @@ def get_jwt(
 
 # Only use when you're expecting an AT that came from IRM, not GK
 def get_current_user(
-        token: Token = Depends(get_jwt),
+        token: str = Depends(get_jwt),
         db: Session = Depends(get_db)
 ) -> User:
 
-    user_id = decode_token(token.access_token)
+    user_id = decode_token(token)
 
     user_db = user.get(db=db, id=user_id)
 
