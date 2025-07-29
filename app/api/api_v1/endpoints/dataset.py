@@ -1,21 +1,18 @@
-from typing import List
-
 from fastapi import APIRouter, Depends, HTTPException
 
 from sqlalchemy.orm import Session
 
 from api import deps
-from models import User
-from schemas import DatasetAnalysis
+from api.deps import get_jwt
+from schemas import DatasetAnalysis, Token
 from schemas import Dataset as DatasetScheme
 from schemas import WeightScheme
 from crud import dataset as crud_dataset
-"""
 from utils import (min_max_date, detect_irrigation_events, count_precipitation_events,
                    count_high_dose_irrigation_events, get_high_dose_irrigation_events_dates, calculate_field_capacity,
                    calculate_stress_level, get_stress_count, get_stress_dates,
                    no_of_saturation_days, get_saturation_dates)
-"""
+
 from utils import calculate_soil_analysis_metrics
 
 from utils import jsonld_get_dataset, jsonld_analyse_soil_moisture
@@ -25,7 +22,6 @@ from core.config import settings
 global_weights_store = {}
 
 router = APIRouter()
-
 
 @router.post("/weights")
 async def set_weights(weight_scheme: WeightScheme):
@@ -37,21 +33,19 @@ async def set_weights(weight_scheme: WeightScheme):
     return {"status_code": 201, "detail": "Successfully uploaded weights per depths"}
 
 
-@router.get("/")
+@router.get("/", dependencies=[Depends(deps.get_jwt)])
 def get_all_datasets_ids(
-        db: Session = Depends(deps.get_db),
-        user: User = Depends(deps.get_current_user)
+        db: Session = Depends(deps.get_db)
 ) -> list[str]:
     db_ids = crud_dataset.get_all_datasets(db)
     ids = [row.dataset_id for row in db_ids.all()]
     return ids
 
 
-@router.post("/")
+@router.post("/", dependencies=[Depends(deps.get_jwt)])
 def upload_dataset(
         dataset: list[DatasetScheme],
-        db: Session = Depends(deps.get_db),
-        user: User = Depends(deps.get_current_user)
+        db: Session = Depends(deps.get_db)
 ):
     try:
         for data in dataset:
@@ -62,11 +56,10 @@ def upload_dataset(
     return {"status_code": 202, "detail": "Successfully uploaded"}
 
 
-@router.get("/{dataset_id}")
+@router.get("/{dataset_id}", dependencies=[Depends(deps.get_jwt)])
 async def get_dataset(
         dataset_id: str,
-        db: Session = Depends(deps.get_db),
-        user: User = Depends(deps.get_current_user)
+        db: Session = Depends(deps.get_db)
 ):
 
     db_dataset = crud_dataset.get_datasets(db, dataset_id)
@@ -82,11 +75,10 @@ async def get_dataset(
         return jsonld_db_dataset
 
 
-@router.delete("/{dataset_id}")
+@router.delete("/{dataset_id}", dependencies=[Depends(deps.get_jwt)])
 def remove_dataset(
         dataset_id: str,
-        db: Session = Depends(deps.get_db),
-        user: User = Depends(deps.get_current_user)
+        db: Session = Depends(deps.get_db)
 ):
     try:
         deleted = crud_dataset.delete_datasets(db, dataset_id)
@@ -102,13 +94,13 @@ def remove_dataset(
 def analyse_soil_moisture(
         dataset_id: str,
         db: Session = Depends(deps.get_db),
-        user: User = Depends(deps.get_current_user)
+        token: Token = Depends(get_jwt)
 ):
     dataset: list[DatasetScheme] = crud_dataset.get_datasets(db, dataset_id)
 
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-    """
+
     field_capacity = calculate_field_capacity(dataset)
     stress_level = calculate_stress_level(field_capacity)
 
@@ -127,9 +119,7 @@ def analyse_soil_moisture(
         stress_dates=get_stress_dates(dataset, stress_level)
 
     )
-    """
 
-    result = calculate_soil_analysis_metrics(dataset)
     if settings.USING_FRONTEND:
         return result
     else:
