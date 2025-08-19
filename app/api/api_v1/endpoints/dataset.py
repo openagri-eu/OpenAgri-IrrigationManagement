@@ -8,18 +8,34 @@ from api import deps
 from models import User
 from schemas import DatasetAnalysis
 from schemas import Dataset as DatasetScheme
+from schemas import WeightScheme
 from crud import dataset as crud_dataset
+"""
 from utils import (min_max_date, detect_irrigation_events, count_precipitation_events,
                    count_high_dose_irrigation_events, get_high_dose_irrigation_events_dates, calculate_field_capacity,
                    calculate_stress_level, get_stress_count, get_stress_dates,
                    no_of_saturation_days, get_saturation_dates)
+"""
+from utils import calculate_soil_analysis_metrics
 
 from utils import jsonld_get_dataset, jsonld_analyse_soil_moisture
 
 from core.config import settings
 
+global_weights_store = {}
 
 router = APIRouter()
+
+
+@router.post("/weights")
+async def set_weights(weight_scheme: WeightScheme):
+    """
+    Sets the default weights for soil analysis.
+    """
+    global global_weights_store
+    global_weights_store = weight_scheme.weights
+    return {"status_code": 201, "detail": "Successfully uploaded weights per depths"}
+
 
 @router.get("/")
 def get_all_datasets_ids(
@@ -92,7 +108,7 @@ def analyse_soil_moisture(
 
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-
+    """
     field_capacity = calculate_field_capacity(dataset)
     stress_level = calculate_stress_level(field_capacity)
 
@@ -111,7 +127,9 @@ def analyse_soil_moisture(
         stress_dates=get_stress_dates(dataset, stress_level)
 
     )
+    """
 
+    result = calculate_soil_analysis_metrics(dataset)
     if settings.USING_FRONTEND:
         return result
     else:

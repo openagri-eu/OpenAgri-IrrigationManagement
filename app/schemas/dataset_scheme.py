@@ -1,6 +1,21 @@
-from pydantic import BaseModel, ConfigDict
-from typing import List, Tuple
+from pydantic import BaseModel, ConfigDict, Field
+from typing import List, Tuple, Dict
 from datetime import datetime
+
+
+class WeightScheme(BaseModel):
+    weights: Dict[int, float] = Field(
+        default={
+            10: 0.5,
+            20: 0.25,
+            30: 0.15,
+            40: 0.05,
+            50: 0.025,
+            60: 0.025
+        },
+        description="A dictionary mapping soil depth (in cm) to a weight."
+    )
+
 
 class Dataset(BaseModel):
     model_config = ConfigDict(from_attributes=True)
