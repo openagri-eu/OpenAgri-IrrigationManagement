@@ -15,6 +15,7 @@ from jobs.background_tasks import get_weather_data
 
 from fastapi.staticfiles import StaticFiles
 
+import os
 
 @asynccontextmanager
 async def lifespan(fa: FastAPI):
@@ -58,6 +59,8 @@ class SPAStaticFiles(StaticFiles):
             else:
                 raise ex
 
-
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))  # project root
+static_path = os.path.join(BASE_DIR, "static")
 # Serve static assets (JS, CSS, images)
-app.mount("/", SPAStaticFiles(directory="static", html=True), name="whatevs")
+# app.mount("/", SPAStaticFiles(directory="static", html=True), name="whatevs")
+app.mount("/", SPAStaticFiles(directory=static_path, html=True), name="whatevs")
