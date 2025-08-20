@@ -18,8 +18,8 @@ from utils import calculate_soil_analysis_metrics
 from utils import jsonld_get_dataset, jsonld_analyse_soil_moisture
 
 from core.config import settings
+from core.weights import global_weights_store
 
-global_weights_store = {}
 
 router = APIRouter()
 
@@ -28,8 +28,19 @@ async def set_weights(weight_scheme: WeightScheme):
     """
     Sets the default weights for soil analysis.
     """
+
+    weights = weight_scheme.weights
+    total = sum(weights.values())
+
+    if not abs(total - 1.0) < 1e-6:
+        raise HTTPException(
+            status_code=406,
+            detail=f"Weights must sum to 1.0, but got {total}"
+        )
+
     global global_weights_store
-    global_weights_store = weight_scheme.weights
+    global_weights_store.clear()
+    global_weights_store.update(weights)
     return {"status_code": 201, "detail": "Successfully uploaded weights per depths"}
 
 

@@ -6,8 +6,8 @@ from datetime import datetime
 class WeightScheme(BaseModel):
     weights: Dict[int, float] = Field(
         default={
-            10: 0.5,
-            20: 0.25,
+            10: 0.125,
+            20: 0.4,
             30: 0.15,
             40: 0.05,
             50: 0.025,
