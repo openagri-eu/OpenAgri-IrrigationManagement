@@ -23,7 +23,8 @@ from core.weights import global_weights_store
 
 router = APIRouter()
 
-@router.post("/weights")
+
+@router.post("/weights/")
 async def set_weights(weight_scheme: WeightScheme):
     """
     Sets the default weights for soil analysis.
