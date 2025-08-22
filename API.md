@@ -239,6 +239,38 @@ Response example:
 
 # SOIL MOISTURE
 
+<h3>POST</h3>
+
+```
+/api/v1/dataset/weights/
+```
+
+Input JSON:
+
+```json
+{
+  "weights": {
+    "10": 0.125,
+    "20": 0.4,
+    "30": 0.15,
+    "40": 0.05,
+    "50": 0.025,
+    "60": 0.025
+  }
+}
+```
+
+```json
+{
+  "status_code":201, 
+  "detail": "Successfully uploaded weights per depths"
+}
+```
+
+This allows user to insert weights per depths in order to calculate field capacity and soil moisture analysis.
+Some depths have more impact on this calculation. 
+This also allows some depths in the datasets to be left out, i.e., weight for that depth(s) is zero (0).
+
 <h3>GET/DELETE</h3>
 
 ```
