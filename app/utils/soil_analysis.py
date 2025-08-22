@@ -34,7 +34,9 @@ def weighted_average(values: List[Tuple[int, float]], weights: Dict[int, float])
 
 
 
-def calculate_field_capacity(df: pd.DataFrame, rain_threshold_mm=5, time_window_hours=24) -> Union[float, None]:
+def calculate_field_capacity(df: pd.DataFrame,
+                             rain_threshold_mm=settings.RAIN_THRESHOLD_MM,
+                             time_window_hours=settings.FIELD_CAPACITY_WINDOW_HOURS) -> Union[float, None]:
     """Calculates weighted field capacity using rain events."""
     soil_moisture_cols = {int(col.split('_')[2]): col for col in df.columns if 'soil_moisture' in col}
 
@@ -84,7 +86,8 @@ def detect_weighted_moisture(df: pd.DataFrame) -> pd.Series:
     return weighted_avg
 
 
-def detect_weighted_stress_days(df: pd.DataFrame, weighted_fc: float, stress_threshold_fraction=0.5) -> List[datetime]:
+def detect_weighted_stress_days(df: pd.DataFrame, weighted_fc: float,
+                                stress_threshold_fraction=settings.STRESS_THRESHOLD_FRACTION) -> List[datetime]:
     """Vectorized detection of stress days."""
     if weighted_fc is None:
         return []
@@ -109,16 +112,16 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme]) -> DatasetAnal
     start_date, end_date = df.index.min().isoformat(), df.index.max().isoformat()
 
     # 2. Irrigation/precipitation events
-    irrigation_events_detected = len(df[(df['rain'] > 0) & (df['rain'] < 5)]) # TODO: move to .env
+    irrigation_events_detected = len(df[(df['rain'] > 0) & (df['rain'] < settings.LOW_DOSE_THRESHOLD_MM)])
     precipitation_events = len(df[df['rain'] > 0])
-    high_dose_irrigation_events = len(df[df['rain'] >= 15]) # TODO: move to .env
-    high_dose_irrigation_events_dates = df[df['rain'] >= 15].index.tolist()
+    high_dose_irrigation_events = len(df[df['rain'] >= settings.HIGH_DOSE_THRESHOLD_MM])
+    high_dose_irrigation_events_dates = df[df['rain'] >= settings.HIGH_DOSE_THRESHOLD_MM].index.tolist()
 
     # 3. Field capacity (weighted)
     weighted_fc = calculate_field_capacity(df)
 
     # 4. Stress and oversaturation detection
-    stress_threshold_fraction = 0.5  # TODO: move to .env
+    stress_threshold_fraction = settings.STRESS_THRESHOLD_FRACTION
     oversaturation_dates = detect_weighted_oversaturation(df, weighted_fc)
     stress_dates = detect_weighted_stress_days(df, weighted_fc, stress_threshold_fraction)
 
