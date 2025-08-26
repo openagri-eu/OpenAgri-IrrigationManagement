@@ -1,5 +1,5 @@
 from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Tuple, Dict
+from typing import List, Dict
 from datetime import datetime
 
 
@@ -40,8 +40,8 @@ class DatasetAnalysis(BaseModel):
     precipitation_events: int
     high_dose_irrigation_events: int
     high_dose_irrigation_events_dates: List[datetime]
-    field_capacity: List[Tuple[int, float]]
-    stress_level: List[Tuple[int, float]]
+    field_capacity: float
+    stress_level: float
     number_of_saturation_days: int
     saturation_dates: List[datetime]
     no_of_stress_days: int

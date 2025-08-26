@@ -16,7 +16,7 @@ from core.config import settings
 router = APIRouter()
 
 
-@router.get("/get-calculations/{location_id}/from/{from_date}/to/{to_date}", dependencies=[Depends(get_jwt)])
+@router.get("/get-calculations/{location_id}/from/{from_date}/to/{to_date}/", dependencies=[Depends(get_jwt)])
 def get_calculations(
     location_id: int,
     from_date: datetime.date,

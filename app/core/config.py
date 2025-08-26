@@ -47,11 +47,6 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRATION_TIME: int
     JWT_KEY: str
 
-    CONST_THRESHOLD: float
-    INCREASE_THRESHOLD: float
-    HIGH_DOSE_THRESHOLD: float
-    SATURATION_THRESHOLD: float
-
     # NEW THRESHOLDS:
     RAIN_THRESHOLD_MM: float = 5.0
     FIELD_CAPACITY_WINDOW_HOURS: int = 24
