@@ -68,7 +68,7 @@ def upload_dataset(
     return {"status_code": 202, "detail": "Successfully uploaded"}
 
 
-@router.get("/{dataset_id}", dependencies=[Depends(deps.get_jwt)])
+@router.get("/{dataset_id}/", dependencies=[Depends(deps.get_jwt)])
 async def get_dataset(
         dataset_id: str,
         db: Session = Depends(deps.get_db)
@@ -87,7 +87,7 @@ async def get_dataset(
         return jsonld_db_dataset
 
 
-@router.delete("/{dataset_id}", dependencies=[Depends(deps.get_jwt)])
+@router.delete("/{dataset_id}/", dependencies=[Depends(deps.get_jwt)])
 def remove_dataset(
         dataset_id: str,
         db: Session = Depends(deps.get_db)
