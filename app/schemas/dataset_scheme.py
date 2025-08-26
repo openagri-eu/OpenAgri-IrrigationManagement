@@ -10,7 +10,7 @@ class WeightScheme(BaseModel):
             20: 0.4,
             30: 0.15,
             40: 0.05,
-            50: 0.025,
+            50: 0.25,
             60: 0.025
         },
         description="A dictionary mapping soil depth (in cm) to a weight."
