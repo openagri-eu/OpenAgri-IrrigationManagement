@@ -25,9 +25,10 @@ router = APIRouter()
 
 
 @router.post("/weights/")
-async def set_weights(weight_scheme: WeightScheme):
+async def set_weights(weight_scheme: WeightScheme,
+                      user: User = Depends(deps.get_current_user)):
     """
-    Sets the default weights for soil analysis.
+    Sets the weights for soil analysis.
     """
 
     weights = weight_scheme.weights
