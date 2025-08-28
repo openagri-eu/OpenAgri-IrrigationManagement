@@ -48,11 +48,11 @@ class Settings(BaseSettings):
     JWT_KEY: str
 
     # NEW THRESHOLDS:
-    RAIN_THRESHOLD_MM: float = 5.0
+    RAIN_THRESHOLD_MM: float = 0.5
     FIELD_CAPACITY_WINDOW_HOURS: int = 24
     STRESS_THRESHOLD_FRACTION: float = 0.5
     LOW_DOSE_THRESHOLD_MM: float = 5.0
-    HIGH_DOSE_THRESHOLD_MM: float = 15.0
+    HIGH_DOSE_THRESHOLD_MM: float = 20.0
 
     SERVICE_PORT: int
     JWT_ALGORITHM: str
