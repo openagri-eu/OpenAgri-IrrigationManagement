@@ -125,6 +125,10 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme]) -> DatasetAnal
     oversaturation_dates = detect_weighted_oversaturation(df, weighted_fc)
     stress_dates = detect_weighted_stress_days(df, weighted_fc, stress_threshold_fraction)
 
+    # Use sets to ensure distinct dates before sorting
+    distinct_saturation_dates = sorted(list(set(d.date().isoformat() for d in oversaturation_dates)))
+    distinct_stress_dates = sorted(list(set(d.date().isoformat() for d in stress_dates)))
+
     # 5. Format results
     return DatasetAnalysis(
         dataset_id=getattr(dataset[0], "dataset_id", "unknown") if dataset else "unknown",
@@ -135,8 +139,8 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme]) -> DatasetAnal
         high_dose_irrigation_events_dates=[d.isoformat() for d in high_dose_irrigation_events_dates],
         field_capacity=weighted_fc,
         stress_level=round(weighted_fc * stress_threshold_fraction, 4) if weighted_fc else None,
-        number_of_saturation_days=len(set(d.date().isoformat() for d in oversaturation_dates)),
-        saturation_dates=sorted(list(set(d.isoformat() for d in oversaturation_dates))),
-        no_of_stress_days=len(set(d.date().isoformat() for d in stress_dates)),
+        number_of_saturation_days=len(distinct_saturation_dates),
+        saturation_dates=distinct_saturation_dates,
+        no_of_stress_days=len(distinct_stress_dates),
         stress_dates=sorted(list(d.isoformat() for d in stress_dates)),
     )
