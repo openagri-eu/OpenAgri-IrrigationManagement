@@ -7,6 +7,7 @@ from api.deps import get_jwt
 from schemas import DatasetAnalysis, Token
 from schemas import Dataset as DatasetScheme
 from schemas import WeightScheme
+from schemas import Message
 from crud import dataset as crud_dataset
 from utils import (min_max_date, detect_irrigation_events, count_precipitation_events,
                    count_high_dose_irrigation_events, get_high_dose_irrigation_events_dates, calculate_field_capacity,
@@ -24,26 +25,48 @@ from core.weights import global_weights_store
 router = APIRouter()
 
 
-@router.post("/weights/")
-async def set_weights(weight_scheme: WeightScheme,
-                      user: User = Depends(deps.get_current_user)):
+@router.post("/weights/", response_model=Message)
+async def set_weights(
+        weight_scheme: WeightScheme,
+        user: User = Depends(deps.get_current_user)
+):
     """
     Sets the weights for soil analysis.
     """
 
-    weights = weight_scheme.weights
-    total = sum(weights.values())
-
-    if not abs(total - 1.0) < 1e-6:
-        raise HTTPException(
-            status_code=406,
-            detail=f"Weights must sum to 1.0, but got {total}"
-        )
-
     global global_weights_store
     global_weights_store.clear()
-    global_weights_store.update(weights)
-    return {"status_code": 201, "detail": "Successfully uploaded weights per depths"}
+
+    new_weights= {
+        10: weight_scheme.val_10,
+        20: weight_scheme.val_20,
+        30: weight_scheme.val_30,
+        40: weight_scheme.val_40,
+        50: weight_scheme.val_50,
+        60: weight_scheme.val_60
+    }
+
+    global_weights_store.update(new_weights)
+
+    msg = Message(message="Successfully uploaded weights per depths")
+
+    return msg
+
+@router.get("/weights/", response_model=WeightScheme)
+async def get_weights(
+        user: User = Depends(deps.get_current_user)
+) -> WeightScheme:
+    """
+    Gets the weights for soil analysis
+    """
+
+    global global_weights_store
+
+    global_weights_str_keys = {str(k): v for k, v in global_weights_store.items()}
+
+    response_value = WeightScheme.model_validate(global_weights_str_keys)
+
+    return response_value
 
 
 @router.get("/", dependencies=[Depends(deps.get_jwt)])
