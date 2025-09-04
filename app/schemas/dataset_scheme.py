@@ -1,20 +1,30 @@
-from pydantic import BaseModel, ConfigDict, Field
-from typing import List, Dict
+import math
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import List
 from datetime import datetime
 
-
 class WeightScheme(BaseModel):
-    weights: Dict[int, float] = Field(
-        default={
-            10: 0.125,
-            20: 0.4,
-            30: 0.15,
-            40: 0.05,
-            50: 0.25,
-            60: 0.025
-        },
-        description="A dictionary mapping soil depth (in cm) to a weight."
-    )
+    val_10: float = Field(..., alias='10')
+    val_20: float = Field(..., alias='20')
+    val_30: float = Field(..., alias='30')
+    val_40: float = Field(..., alias='40')
+    val_50: float = Field(..., alias='50')
+    val_60: float = Field(..., alias='60')
+
+    @model_validator(mode='after')
+    def check_sum_is_one(self) -> "WeightScheme":
+        """
+        After the individual fields are validated, this function checks if their sum is approximately 1.0.
+        """
+
+        all_values = self.__dict__.values()
+        total = sum(all_values)
+
+        if not math.isclose(total, 1.0):
+            raise ValueError(f"The sum of all values must be 1.0, but it is {total:.8f}")
+
+        return self
 
 
 class Dataset(BaseModel):

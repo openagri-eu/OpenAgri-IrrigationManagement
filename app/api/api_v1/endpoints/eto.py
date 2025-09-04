@@ -1,4 +1,5 @@
 import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -7,10 +8,8 @@ from api import deps
 import crud
 from api.deps import get_jwt
 
-from schemas import EToResponse, Token
+from schemas import EToResponse
 from utils import jsonld_eto_response
-
-from core.config import settings
 
 
 router = APIRouter()
@@ -21,7 +20,8 @@ def get_calculations(
     location_id: int,
     from_date: datetime.date,
     to_date: datetime.date,
-    db: Session = Depends(deps.get_db)
+    db: Session = Depends(deps.get_db),
+    formatting: Literal["JSON", "JSON-LD"] = "JSON"
 ):
     """
     Returns ETo calculations for the requested days
@@ -50,7 +50,7 @@ def get_calculations(
             )
         )
 
-    if settings.USING_FRONTEND:
+    if formatting.lower() == "json":
         return eto_response
     else:
         jsonld_response = jsonld_eto_response(eto_response)
