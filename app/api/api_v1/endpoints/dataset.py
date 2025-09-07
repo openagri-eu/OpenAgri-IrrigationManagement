@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -21,10 +21,9 @@ from core.config import settings
 router = APIRouter()
 
 
-@router.post("/weights/", response_model=Message)
+@router.post("/weights/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
 async def set_weights(
-        weight_scheme: WeightScheme,
-        user: User = Depends(deps.get_current_user)
+        weight_scheme: WeightScheme
 ):
     """
     Sets the weights for soil analysis.
@@ -46,9 +45,9 @@ async def set_weights(
 
     return msg
 
-@router.get("/weights/", response_model=WeightScheme)
+@router.get("/weights/", response_model=WeightScheme, dependencies=[Depends(deps.get_jwt)])
 async def get_weights(
-        user: User = Depends(deps.get_current_user)
+
 ) -> WeightScheme:
     """
     Gets the weights for soil analysis
@@ -61,21 +60,19 @@ async def get_weights(
     return response_value
 
 
-@router.get("/")
+@router.get("/", dependencies=[Depends(deps.get_jwt)])
 def get_all_datasets_ids(
-        db: Session = Depends(deps.get_db),
-        user: User = Depends(deps.get_current_user)
+        db: Session = Depends(deps.get_db)
 ) -> list[str]:
     db_ids = crud_dataset.get_all_datasets(db)
     ids = [row.dataset_id for row in db_ids.all()]
     return ids
 
 
-@router.post("/")
+@router.post("/", dependencies=[Depends(deps.get_jwt)], response_model=Message)
 def upload_dataset(
         dataset: list[DatasetScheme],
-        db: Session = Depends(deps.get_db),
-        user: User = Depends(deps.get_current_user)
+        db: Session = Depends(deps.get_db)
 ):
     try:
         for data in dataset:
@@ -83,34 +80,30 @@ def upload_dataset(
     except:
         raise HTTPException(status_code=400, detail="Could not upload dataset")
 
-    return {"status_code": 202, "detail": "Successfully uploaded"}
+    return Message(message="Successfully uploaded")
 
 
-@router.get("/{dataset_id}/")
+@router.get("/{dataset_id}/", dependencies=[Depends(deps.get_jwt)])
 async def get_dataset(
         dataset_id: str,
         db: Session = Depends(deps.get_db),
-        user: User = Depends(deps.get_current_user)
+        formatting: Literal["JSON", "JSON-LD"] = "JSON-LD"
 ):
 
     db_dataset = crud_dataset.get_datasets(db, dataset_id)
     if not db_dataset:
         raise HTTPException(status_code=404, detail="No datasets with that id")
 
-    if settings.USING_FRONTEND:
-
+    if formatting == "JSON":
         return db_dataset
-    else:
 
-        jsonld_db_dataset = jsonld_get_dataset(db_dataset)
-        return jsonld_db_dataset
+    return jsonld_get_dataset(db_dataset)
 
 
-@router.delete("/{dataset_id}/")
+@router.delete("/{dataset_id}/", dependencies=[Depends(deps.get_jwt)], response_model=Message)
 def remove_dataset(
         dataset_id: str,
-        db: Session = Depends(deps.get_db),
-        user: User = Depends(deps.get_current_user)
+        db: Session = Depends(deps.get_db)
 ):
     try:
         deleted = crud_dataset.delete_datasets(db, dataset_id)
@@ -119,14 +112,14 @@ def remove_dataset(
 
     if deleted == 0:
         raise HTTPException(status_code=400, detail="No dataset with given id")
-    return {"status_code":201, "detail": "Successfully deleted"}
 
+    return Message(message="Successfully deleted")
 
-@router.get("/{dataset_id}/analysis/")
+@router.get("/{dataset_id}/analysis/", dependencies=[Depends(deps.get_jwt)])
 def analyse_soil_moisture(
         dataset_id: str,
         db: Session = Depends(deps.get_db),
-        user: User = Depends(deps.get_current_user)
+        formatting: Literal["JSON", "JSON-LD"] = "JSON-LD"
 ):
     dataset: list[Dataset] = crud_dataset.get_datasets(db, dataset_id)
     dataset = [DatasetScheme(**data_part.__dict__) for data_part in dataset]
@@ -135,8 +128,8 @@ def analyse_soil_moisture(
         raise HTTPException(status_code=404, detail="Dataset not found")
 
     result = calculate_soil_analysis_metrics(dataset)
-    if settings.USING_FRONTEND:
+
+    if formatting == "JSON":
         return result
-    else:
-        jsonld_analysis = jsonld_analyse_soil_moisture(result)
-        return jsonld_analysis
+
+    return jsonld_analyse_soil_moisture(result)
