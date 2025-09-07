@@ -1,8 +1,11 @@
+import requests
 from fastapi import APIRouter, Depends, HTTPException
+from requests import RequestException
 from sqlalchemy.orm import Session
+from typing import Any
 
 from api import deps
-from api.deps import is_not_using_gatekeeper, get_current_user
+from api.deps import is_not_using_gatekeeper
 from models import User
 from schemas import Message, UserCreate, UserMe
 from crud import user
@@ -12,13 +15,13 @@ from core import settings
 router = APIRouter()
 
 
-@router.post("/register/", response_model=Message, dependencies=[Depends(is_not_using_gatekeeper)])
+@router.post("/register/", response_model=Message)
 def register(
         user_information: UserCreate,
         db: Session = Depends(deps.get_db)
 ) -> Message:
     """
-    Registration
+    Registration API for the service.
     """
 
     pwd_check = settings.PASSWORD_SCHEMA_OBJ.validate(pwd=user_information.password)
@@ -26,17 +29,38 @@ def register(
         raise HTTPException(
             status_code=400,
             detail="Password needs to be at least 8 characters long,"
-                   "contain at least one uppercase and one lowercase letter, one digit and have no spaces"
+                   "contain at least one uppercase and one lowercase letter, one digit and have no spaces."
         )
 
-    user_db = user.get_by_email(db=db, email=user_information.email)
-    if user_db:
-        raise HTTPException(
-            status_code=400,
-            detail="User with email:{} already exists".format(user_information.email)
-        )
+    if settings.USING_GATEKEEPER:
+        try:
+            response = requests.post(
+                url=str(settings.GATEKEEPER_BASE_URL).strip("/") + "/api/register/",
+                headers={"Content-Type": "application/json"},
+                json={"username": user_information.email,
+                      "email": user_information.email, "password": user_information.password}
+            )
+        except RequestException:
+            raise HTTPException(
+                status_code=400,
+                detail="Error, can't connect to gatekeeper instance."
+            )
 
-    user.create(db=db, obj_in=user_information)
+        if response.status_code / 100 != 2:
+            raise HTTPException(
+                status_code=400,
+                detail="Error, gatekeeper raise issue with request."
+            )
+
+    else:
+        user_db = user.get_by_email(db=db, email=user_information.email)
+        if user_db:
+            raise HTTPException(
+                status_code=400,
+                detail="User with email:{} already exists.".format(user_information.email)
+            )
+
+        user.create(db=db, obj_in=user_information)
 
     response = Message(
         message="You have successfully registered!"
@@ -47,10 +71,10 @@ def register(
 
 @router.get("/me/", response_model=UserMe, dependencies=[Depends(is_not_using_gatekeeper)])
 def get_me(
-        current_user: User = Depends(get_current_user)
-) -> User:
+        current_user: User = Depends(deps.get_current_user)
+) -> Any:
     """
-    Returns user information
+    Returns user email
     """
 
     return current_user

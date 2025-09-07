@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -28,10 +28,9 @@ from core.config import settings
 router = APIRouter()
 
 
-@router.post("/weights/", response_model=Message)
+@router.post("/weights/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
 async def set_weights(
-        weight_scheme: WeightScheme,
-        user: User = Depends(deps.get_current_user)
+        weight_scheme: WeightScheme
 ):
     """
     Sets the weights for soil analysis.
@@ -53,9 +52,9 @@ async def set_weights(
 
     return msg
 
-@router.get("/weights/", response_model=WeightScheme)
+@router.get("/weights/", response_model=WeightScheme, dependencies=[Depends(deps.get_jwt)])
 async def get_weights(
-        user: User = Depends(deps.get_current_user)
+
 ) -> WeightScheme:
     """
     Gets the weights for soil analysis
@@ -77,7 +76,7 @@ def get_all_datasets_ids(
     return ids
 
 
-@router.post("/", dependencies=[Depends(deps.get_jwt)])
+@router.post("/", dependencies=[Depends(deps.get_jwt)], response_model=Message)
 def upload_dataset(
         dataset: list[DatasetScheme],
         db: Session = Depends(deps.get_db)
@@ -88,29 +87,27 @@ def upload_dataset(
     except:
         raise HTTPException(status_code=400, detail="Could not upload dataset")
 
-    return {"status_code": 202, "detail": "Successfully uploaded"}
+    return Message(message="Successfully uploaded")
 
 
 @router.get("/{dataset_id}/", dependencies=[Depends(deps.get_jwt)])
 async def get_dataset(
         dataset_id: str,
-        db: Session = Depends(deps.get_db)
+        db: Session = Depends(deps.get_db),
+        formatting: Literal["JSON", "JSON-LD"] = "JSON-LD"
 ):
 
     db_dataset = crud_dataset.get_datasets(db, dataset_id)
     if not db_dataset:
         raise HTTPException(status_code=404, detail="No datasets with that id")
 
-    if settings.USING_FRONTEND:
-
+    if formatting == "JSON":
         return db_dataset
-    else:
 
-        jsonld_db_dataset = jsonld_get_dataset(db_dataset)
-        return jsonld_db_dataset
+    return jsonld_get_dataset(db_dataset)
 
 
-@router.delete("/{dataset_id}/", dependencies=[Depends(deps.get_jwt)])
+@router.delete("/{dataset_id}/", dependencies=[Depends(deps.get_jwt)], response_model=Message)
 def remove_dataset(
         dataset_id: str,
         db: Session = Depends(deps.get_db)
@@ -122,14 +119,14 @@ def remove_dataset(
 
     if deleted == 0:
         raise HTTPException(status_code=400, detail="No dataset with given id")
-    return {"status_code":201, "detail": "Successfully deleted"}
 
+    return Message(message="Successfully deleted")
 
-@router.get("/{dataset_id}/analysis/")
+@router.get("/{dataset_id}/analysis/", dependencies=[Depends(deps.get_jwt)])
 def analyse_soil_moisture(
         dataset_id: str,
         db: Session = Depends(deps.get_db),
-        token: Token = Depends(get_jwt)
+        formatting: Literal["JSON", "JSON-LD"] = "JSON-LD"
 ):
     dataset: list[Dataset] = crud_dataset.get_datasets(db, dataset_id)
     dataset = [DatasetScheme(**data_part.__dict__) for data_part in dataset]

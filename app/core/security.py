@@ -1,10 +1,10 @@
+from datetime import datetime, timedelta
+
 from fastapi import HTTPException
 from pydantic import ValidationError
 
 from .config import settings
 from passlib.context import CryptContext
-
-from datetime import datetime, timedelta
 
 import jwt
 
@@ -20,22 +20,11 @@ def _create_jwt(
     return jw_token
 
 
-def create_access_token(
-        subject: str
+def create_token(
+        subject: str,
+        expiration_time: int
 ) -> str:
-
-    expire = datetime.now() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRATION_TIME)
-
-    jw_token = _create_jwt(expiration_time=expire, subject=subject)
-
-    return jw_token
-
-
-def create_refresh_token(
-        subject: str
-) -> str:
-
-    expire = datetime.now() + timedelta(minutes=settings.REFRESH_TOKEN_EXPIRATION_TIME)
+    expire = datetime.now() + timedelta(minutes=expiration_time)
 
     jw_token = _create_jwt(expiration_time=expire, subject=subject)
 
