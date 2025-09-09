@@ -14,7 +14,8 @@ import numpy as np
 
 def preprocess_dataset(data: List[DatasetScheme]) -> pd.DataFrame:
     """Standard preprocessing: convert to DataFrame, set timestamp index, fill missing rain."""
-    df = pd.DataFrame(data)
+    data_dict = [item.model_dump() for item in data]
+    df = pd.DataFrame(data_dict)
     df.rename(columns={'date': 'timestamp'}, inplace=True)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df.set_index('timestamp', inplace=True)
@@ -137,8 +138,8 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme]) -> DatasetAnal
         precipitation_events=precipitation_events,
         high_dose_irrigation_events=high_dose_irrigation_events,
         high_dose_irrigation_events_dates=[d.isoformat() for d in high_dose_irrigation_events_dates],
-        field_capacity=weighted_fc,
-        stress_level=round(weighted_fc * stress_threshold_fraction, 4) if weighted_fc else None,
+        field_capacity=weighted_fc if weighted_fc is not None else 0.0,
+        stress_level=round(weighted_fc * stress_threshold_fraction, 4) if weighted_fc is not None else 0.0,
         number_of_saturation_days=len(distinct_saturation_dates),
         saturation_dates=distinct_saturation_dates,
         no_of_stress_days=len(distinct_stress_dates),

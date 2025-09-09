@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from api import deps
+from models import User, Dataset
 from api.deps import get_jwt
 from schemas import DatasetAnalysis, Token
 from schemas import Dataset as DatasetScheme
@@ -132,7 +133,8 @@ def analyse_soil_moisture(
         db: Session = Depends(deps.get_db),
         token: Token = Depends(get_jwt)
 ):
-    dataset: list[DatasetScheme] = crud_dataset.get_datasets(db, dataset_id)
+    dataset: list[Dataset] = crud_dataset.get_datasets(db, dataset_id)
+    dataset = [DatasetScheme(**data_part.__dict__) for data_part in dataset]
 
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
