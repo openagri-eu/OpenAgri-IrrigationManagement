@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from api import deps
-from models import User
+from models import User, Dataset
 from schemas import Dataset as DatasetScheme
 from schemas import WeightScheme
 from schemas import Message
@@ -136,16 +136,15 @@ def analyse_soil_moisture(
         db: Session = Depends(deps.get_db),
         user: User = Depends(deps.get_current_user)
 ):
-    dataset: list[DatasetScheme] = crud_dataset.get_datasets(db, dataset_id)
+    dataset: list[Dataset] = crud_dataset.get_datasets(db, dataset_id)
+    dataset = [DatasetScheme(**data_part.__dict__) for data_part in dataset]
 
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
-
 
     result = calculate_soil_analysis_metrics(dataset)
     if settings.USING_FRONTEND:
         return result
     else:
-
         jsonld_analysis = jsonld_analyse_soil_moisture(result)
         return jsonld_analysis
