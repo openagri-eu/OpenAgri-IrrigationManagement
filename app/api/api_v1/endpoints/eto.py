@@ -62,7 +62,6 @@ def calculate_eto_via_gk(
         from_date: datetime.date,
         to_date: datetime.date,
         access_token: str = Depends(get_jwt),
-        db: Session = Depends(deps.get_db),
         formatting: Literal["JSON", "JSON-LD"] = "JSON"
 ):
     """
@@ -89,6 +88,12 @@ def calculate_eto_via_gk(
         latitude=lat, longitude=lon, access_token=access_token, start_date=from_date, end_date=to_date,
         variables=["et0_fao_evapotranspiration"]
     )
+
+    if not weather_data:
+        raise HTTPException(
+            status_code=400,
+            detail="Error during weather data fetch, none found"
+        )
 
     response_json = EToResponse(
         calculations=[
