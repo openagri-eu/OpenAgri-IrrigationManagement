@@ -15,12 +15,12 @@ from utils import (min_max_date, detect_irrigation_events, count_precipitation_e
                    calculate_stress_level, get_stress_count, get_stress_dates,
                    no_of_saturation_days, get_saturation_dates)
 
+
 from utils import calculate_soil_analysis_metrics
 
 from utils import jsonld_get_dataset, jsonld_analyse_soil_moisture
 
 from core.config import settings
-from core.weights import global_weights_store
 
 
 router = APIRouter()
@@ -35,19 +35,17 @@ async def set_weights(
     Sets the weights for soil analysis.
     """
 
-    global global_weights_store
-    global_weights_store.clear()
-
-    new_weights= {
+    new_weights = {
         10: weight_scheme.val_10,
         20: weight_scheme.val_20,
         30: weight_scheme.val_30,
         40: weight_scheme.val_40,
         50: weight_scheme.val_50,
-        60: weight_scheme.val_60
+        60: weight_scheme.val_60,
     }
 
-    global_weights_store.update(new_weights)
+    settings.GLOBAL_WEIGHTS.clear()
+    settings.GLOBAL_WEIGHTS.update(new_weights)
 
     msg = Message(message="Successfully uploaded weights per depths")
 
@@ -61,11 +59,9 @@ async def get_weights(
     Gets the weights for soil analysis
     """
 
-    global global_weights_store
+    weights_for_response = {str(k): v for k, v in settings.GLOBAL_WEIGHTS.items()}
 
-    global_weights_str_keys = {str(k): v for k, v in global_weights_store.items()}
-
-    response_value = WeightScheme.model_validate(global_weights_str_keys)
+    response_value = WeightScheme.model_validate(weights_for_response)
 
     return response_value
 

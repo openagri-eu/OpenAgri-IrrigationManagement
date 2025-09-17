@@ -6,7 +6,6 @@ from schemas import DatasetAnalysis
 from datetime import datetime
 
 from core import settings
-from core.weights import global_weights_store
 
 import pandas as pd
 import numpy as np
@@ -37,7 +36,8 @@ def weighted_average(values: List[Tuple[int, float]], weights: Dict[int, float])
 
 def calculate_field_capacity(df: pd.DataFrame,
                              rain_threshold_mm=settings.RAIN_THRESHOLD_MM,
-                             time_window_hours=settings.FIELD_CAPACITY_WINDOW_HOURS) -> Union[float, None]:
+                             time_window_hours=settings.FIELD_CAPACITY_WINDOW_HOURS,
+                             rain_zero_tolerance=settings.RAIN_ZERO_TOLERANCE) -> Union[float, None]:
     """Calculates weighted field capacity using rain events."""
     soil_moisture_cols = {int(col.split('_')[2]): col for col in df.columns if 'soil_moisture' in col}
 
@@ -53,7 +53,7 @@ def calculate_field_capacity(df: pd.DataFrame,
     field_capacity_candidates = {col: [] for col in soil_moisture_cols.values()}
 
     for event_timestamp in major_rain_events.index:
-        end_of_rain_candidates = df.loc[event_timestamp:][df.loc[event_timestamp:]['rain'] == 0].index
+        end_of_rain_candidates = df.loc[event_timestamp:][df.loc[event_timestamp:]['rain'] < rain_zero_tolerance].index
         if end_of_rain_candidates.empty:
             continue
         end_of_rain = end_of_rain_candidates[0]
@@ -67,17 +67,17 @@ def calculate_field_capacity(df: pd.DataFrame,
                             for depth, col in soil_moisture_cols.items()}
 
     # Weighted flattening
-    fc_list = [[depth, val] for depth, val in final_field_capacity.items() if val is not None]
-    return weighted_average(fc_list, global_weights_store)
+    fc_list = [(depth, float(val)) for depth, val in final_field_capacity.items() if val is not None]
+    return weighted_average(fc_list, settings.GLOBAL_WEIGHTS)
 
 
 def detect_weighted_moisture(df: pd.DataFrame) -> pd.Series:
     """Compute vectorized weighted soil moisture across all timestamps."""
-    valid_depths = [depth for depth in global_weights_store if f"soil_moisture_{depth}" in df.columns]
+    valid_depths = [depth for depth in settings.GLOBAL_WEIGHTS if f"soil_moisture_{depth}" in df.columns]
     if not valid_depths:
         return pd.Series([], dtype=float)
 
-    weights = np.array([global_weights_store[d] for d in valid_depths])
+    weights = np.array([settings.GLOBAL_WEIGHTS[d] for d in valid_depths])
     soil_cols = [f"soil_moisture_{d}" for d in valid_depths]
 
     # Normalize soil moisture to fraction
