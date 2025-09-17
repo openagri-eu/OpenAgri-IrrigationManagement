@@ -23,7 +23,7 @@ def preprocess_dataset(data: List[DatasetScheme]) -> pd.DataFrame:
 
 
 
-def weighted_average(values: List[Tuple[int, float]], weights: Dict[int, float]) -> float:
+def weighted_average(values: List[Tuple[int, float]], weights: Dict[int, float]) -> float | None:
     """Compute weighted average across depths given [[depth, value], ...]."""
     total, weight_sum = 0.0, 0.0
     for depth, val in values:
@@ -54,17 +54,19 @@ def calculate_field_capacity(df: pd.DataFrame,
 
     for event_timestamp in major_rain_events.index:
         end_of_rain_candidates = df.loc[event_timestamp:][df.loc[event_timestamp:]['rain'] < rain_zero_tolerance].index
-        if end_of_rain_candidates.empty:
-            continue
-        end_of_rain = end_of_rain_candidates[0]
+        end_of_rain = end_of_rain_candidates[0] if len(end_of_rain_candidates) > 0 else event_timestamp
         search_period = df.loc[end_of_rain:end_of_rain + pd.Timedelta(hours=time_window_hours)]
+
         for col in soil_moisture_cols.values():
             if not search_period.empty and not search_period[col].isnull().all():
                 fc_candidate = search_period[col].max()
                 field_capacity_candidates[col].append(fc_candidate)
 
-    final_field_capacity = {depth: np.median(field_capacity_candidates[col]) / 100 if field_capacity_candidates[col] else None
-                            for depth, col in soil_moisture_cols.items()}
+    final_field_capacity = {
+        depth: (float(np.median(field_capacity_candidates[col])) / 100)
+        if len(field_capacity_candidates[col]) > 0 else None
+        for depth, col in soil_moisture_cols.items()
+    }
 
     # Weighted flattening
     fc_list = [(depth, float(val)) for depth, val in final_field_capacity.items() if val is not None]
