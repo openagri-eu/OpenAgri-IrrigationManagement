@@ -1,3 +1,4 @@
+import datetime
 from typing import List, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +11,7 @@ from schemas import Dataset as DatasetScheme
 from schemas import WeightScheme
 from schemas import Message
 from crud import dataset as crud_dataset
+from api.deps import get_jwt
 
 from utils import calculate_soil_analysis_metrics
 
@@ -133,3 +135,16 @@ def analyse_soil_moisture(
         return result
 
     return jsonld_analyse_soil_moisture(result)
+
+
+@router.get("/soil-moisture/{parcel_id}/from/{from_date}/to/{to_date}")
+def get_soil_moisture(
+        parcel_id: str,
+        from_date: datetime.date,
+        to_date: datetime.date,
+        access_token: str = Depends(get_jwt),
+):
+    """
+        Returns requested soil moisture analysis based on FC farm parcel and date interval
+        """
+    pass
