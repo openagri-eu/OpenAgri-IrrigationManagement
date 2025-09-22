@@ -70,7 +70,7 @@ def login_access_token(
 
         response_json = response.json()
 
-        if response_json["success"]:
+        if response_json.get("success", False):
             response_token = Token(
                 access_token=response.json()["access"],
                 refresh_token=response.json()["refresh"],
