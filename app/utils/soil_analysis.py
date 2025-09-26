@@ -6,7 +6,6 @@ from schemas import DatasetAnalysis
 from datetime import datetime
 
 from core import settings
-from core.weights import global_weights_store
 
 import pandas as pd
 import numpy as np
@@ -19,12 +18,12 @@ def preprocess_dataset(data: List[DatasetScheme]) -> pd.DataFrame:
     df.rename(columns={'date': 'timestamp'}, inplace=True)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df.set_index('timestamp', inplace=True)
-    df['rain'].fillna(0, inplace=True)
+    df['rain'] = df['rain'].fillna(0)
     return df
 
 
 
-def weighted_average(values: List[Tuple[int, float]], weights: Dict[int, float]) -> float:
+def weighted_average(values: List[Tuple[int, float]], weights: Dict[int, float]) -> float | None:
     """Compute weighted average across depths given [[depth, value], ...]."""
     total, weight_sum = 0.0, 0.0
     for depth, val in values:
@@ -35,49 +34,72 @@ def weighted_average(values: List[Tuple[int, float]], weights: Dict[int, float])
 
 
 
-def calculate_field_capacity(df: pd.DataFrame,
-                             rain_threshold_mm=settings.RAIN_THRESHOLD_MM,
-                             time_window_hours=settings.FIELD_CAPACITY_WINDOW_HOURS) -> Union[float, None]:
-    """Calculates weighted field capacity using rain events."""
+def calculate_field_capacity(
+    df: pd.DataFrame,
+    rain_threshold_mm=settings.RAIN_THRESHOLD_MM,
+    time_window_hours=settings.FIELD_CAPACITY_WINDOW_HOURS,
+    rain_zero_tolerance=settings.RAIN_ZERO_TOLERANCE
+) -> Union[float, None]:
+    """Calculates weighted field capacity using daily rain totals."""
+
+    # --- Identify soil moisture columns ---
     soil_moisture_cols = {int(col.split('_')[2]): col for col in df.columns if 'soil_moisture' in col}
+    print("Detected soil moisture columns:", soil_moisture_cols)
 
-    # Forward-fill missing values
+    # Fill missing values
     for col in soil_moisture_cols.values():
-        df[col].fillna(method='ffill', inplace=True)
+        df[col] = df[col].ffill().bfill()
 
-    # Identify major rain events
-    major_rain_events = df[df['rain'] >= rain_threshold_mm]
-    if major_rain_events.empty:
+    # --- Aggregate rain to daily totals ---
+    daily_rain = df['rain'].resample("1D").sum()
+    major_rain_days = daily_rain[daily_rain >= rain_threshold_mm].index
+    print("Number of major rain days:", len(major_rain_days))
+
+    if len(major_rain_days) == 0:
         return None
 
     field_capacity_candidates = {col: [] for col in soil_moisture_cols.values()}
 
-    for event_timestamp in major_rain_events.index:
-        end_of_rain_candidates = df.loc[event_timestamp:][df.loc[event_timestamp:]['rain'] == 0].index
-        if end_of_rain_candidates.empty:
-            continue
-        end_of_rain = end_of_rain_candidates[0]
-        search_period = df.loc[end_of_rain:end_of_rain + pd.Timedelta(hours=time_window_hours)]
+    # --- For each rain day, find post-rain window and max moisture ---
+    for rain_day in major_rain_days:
+        # End of rain = first dry hour after rain day
+        day_slice = df.loc[rain_day: rain_day + pd.Timedelta("1D")]
+        end_of_rain_candidates = day_slice[day_slice['rain'] < rain_zero_tolerance].index
+        if len(end_of_rain_candidates) > 0:
+            end_of_rain = end_of_rain_candidates[0]
+        elif not day_slice.empty:
+            end_of_rain = day_slice.index[-1]
+        else:
+            continue  # skip this event if no data
+
+        # Look forward a window of hours after end of rain
+        search_period = df.loc[end_of_rain: end_of_rain + pd.Timedelta(hours=time_window_hours)]
+        print(f"Search period for rain day {rain_day.date()}: {len(search_period)} rows")
+
         for col in soil_moisture_cols.values():
             if not search_period.empty and not search_period[col].isnull().all():
                 fc_candidate = search_period[col].max()
                 field_capacity_candidates[col].append(fc_candidate)
 
-    final_field_capacity = {depth: np.median(field_capacity_candidates[col]) / 100 if field_capacity_candidates[col] else None
-                            for depth, col in soil_moisture_cols.items()}
+    # --- Median across candidates, convert to fraction ---
+    final_field_capacity = {
+        depth: (float(np.median(field_capacity_candidates[col])) / 100)
+        if len(field_capacity_candidates[col]) > 0 else None
+        for depth, col in soil_moisture_cols.items()
+    }
 
-    # Weighted flattening
-    fc_list = [[depth, val] for depth, val in final_field_capacity.items() if val is not None]
-    return weighted_average(fc_list, global_weights_store)
+    # Weighted average flattening
+    fc_list = [(depth, float(val)) for depth, val in final_field_capacity.items() if val is not None]
+    return weighted_average(fc_list, settings.GLOBAL_WEIGHTS)
 
 
 def detect_weighted_moisture(df: pd.DataFrame) -> pd.Series:
     """Compute vectorized weighted soil moisture across all timestamps."""
-    valid_depths = [depth for depth in global_weights_store if f"soil_moisture_{depth}" in df.columns]
+    valid_depths = [depth for depth in settings.GLOBAL_WEIGHTS if f"soil_moisture_{depth}" in df.columns]
     if not valid_depths:
         return pd.Series([], dtype=float)
 
-    weights = np.array([global_weights_store[d] for d in valid_depths])
+    weights = np.array([settings.GLOBAL_WEIGHTS[d] for d in valid_depths])
     soil_cols = [f"soil_moisture_{d}" for d in valid_depths]
 
     # Normalize soil moisture to fraction
@@ -112,13 +134,18 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme]) -> DatasetAnal
     # 1. Time period
     start_date, end_date = df.index.min().isoformat(), df.index.max().isoformat()
 
-    # 2. Irrigation/precipitation events
-    irrigation_events_detected = len(df[(df['rain'] > 0) & (df['rain'] < settings.LOW_DOSE_THRESHOLD_MM)])
-    precipitation_events = len(df[df['rain'] > 0])
-    high_dose_irrigation_events = len(df[df['rain'] >= settings.HIGH_DOSE_THRESHOLD_MM])
-    high_dose_irrigation_events_dates = df[df['rain'] >= settings.HIGH_DOSE_THRESHOLD_MM].index.tolist()
+    # --- Resample rain to daily totals ---
+    daily_rain = df['rain'].resample("1D").sum()
 
-    # 3. Field capacity (weighted)
+    # 2. Irrigation/precipitation events (daily totals)
+    irrigation_events_detected = (daily_rain[(daily_rain > 0) & (daily_rain < settings.LOW_DOSE_THRESHOLD_MM)]).count()
+    precipitation_events = (daily_rain[daily_rain > 0]).count()
+    high_dose_irrigation = daily_rain[daily_rain >= settings.HIGH_DOSE_THRESHOLD_MM]
+
+    high_dose_irrigation_events = high_dose_irrigation.count()
+    high_dose_irrigation_events_dates = [d.isoformat() for d in high_dose_irrigation.index]
+
+    # 3. Field capacity (weighted, based on daily rain)
     weighted_fc = calculate_field_capacity(df)
 
     # 4. Stress and oversaturation detection
@@ -127,8 +154,8 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme]) -> DatasetAnal
     stress_dates = detect_weighted_stress_days(df, weighted_fc, stress_threshold_fraction)
 
     # Use sets to ensure distinct dates before sorting
-    distinct_saturation_dates = sorted(list(set(d.date().isoformat() for d in oversaturation_dates)))
-    distinct_stress_dates = sorted(list(set(d.date().isoformat() for d in stress_dates)))
+    distinct_saturation_dates = sorted({d.date().isoformat() for d in oversaturation_dates})
+    distinct_stress_dates = sorted({d.date().isoformat() for d in stress_dates})
 
     # 5. Format results
     return DatasetAnalysis(
@@ -137,11 +164,11 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme]) -> DatasetAnal
         irrigation_events_detected=irrigation_events_detected,
         precipitation_events=precipitation_events,
         high_dose_irrigation_events=high_dose_irrigation_events,
-        high_dose_irrigation_events_dates=[d.isoformat() for d in high_dose_irrigation_events_dates],
+        high_dose_irrigation_events_dates=high_dose_irrigation_events_dates,
         field_capacity=weighted_fc if weighted_fc is not None else 0.0,
         stress_level=round(weighted_fc * stress_threshold_fraction, 4) if weighted_fc is not None else 0.0,
         number_of_saturation_days=len(distinct_saturation_dates),
         saturation_dates=distinct_saturation_dates,
         no_of_stress_days=len(distinct_stress_dates),
-        stress_dates=sorted(list(d.isoformat() for d in stress_dates)),
+        stress_dates=distinct_stress_dates,
     )
