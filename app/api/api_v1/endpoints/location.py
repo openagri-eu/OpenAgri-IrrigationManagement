@@ -83,7 +83,7 @@ def add_location_wkt(
     return Message(message="Successfully created new location!")
 
 
-@router.delete("/{location_id}", response_model=Message, dependencies=[Depends(get_jwt)])
+@router.delete("/{location_id}/", response_model=Message, dependencies=[Depends(get_jwt)])
 def remove_location(
     location_id: int,
     db: Session = Depends(get_db)
@@ -106,7 +106,7 @@ def remove_location(
         message="Successfully deleted the location"
     )
 
-@router.get("/{location_id}", response_model=LocationDB, dependencies=[Depends(get_jwt)])
+@router.get("/{location_id}/", response_model=LocationDB, dependencies=[Depends(get_jwt)])
 def get_location(
     location_id: int,
     db: Session = Depends(get_db)

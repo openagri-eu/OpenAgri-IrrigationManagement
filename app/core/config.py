@@ -47,17 +47,19 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRATION_TIME: int
     JWT_KEY: str
 
-    CONST_THRESHOLD: float
-    INCREASE_THRESHOLD: float
-    HIGH_DOSE_THRESHOLD: float
-    SATURATION_THRESHOLD: float
+    # NEW THRESHOLDS:
+    RAIN_THRESHOLD_MM: float = 0.5
+    FIELD_CAPACITY_WINDOW_HOURS: int = 24
+    STRESS_THRESHOLD_FRACTION: float = 0.5
+    LOW_DOSE_THRESHOLD_MM: float = 5.0
+    HIGH_DOSE_THRESHOLD_MM: float = 20.0
 
     SERVICE_PORT: int
     JWT_ALGORITHM: str
 
     # Gatekeeper info
     USING_GATEKEEPER: bool
-    GATEKEEPER_BASE_URL: Optional[AnyHttpUrl] = None
+    GATEKEEPER_BASE_URL: Optional[AnyHttpUrl] | Optional[str] = None
     GATEKEEPER_USERNAME: str
     GATEKEEPER_PASSWORD: str
     SERVICE_NAME: str
