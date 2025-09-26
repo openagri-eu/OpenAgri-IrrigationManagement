@@ -1,7 +1,7 @@
 from typing import Annotated
 
 import requests
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordRequestForm
 from requests import RequestException
 from sqlalchemy.orm import Session
@@ -70,7 +70,9 @@ def login_access_token(
 
         response_json = response.json()
 
+        
         if response_json["success"]:
+
             response_token = Token(
                 access_token=response.json()["access"],
                 refresh_token=response.json()["refresh"],
