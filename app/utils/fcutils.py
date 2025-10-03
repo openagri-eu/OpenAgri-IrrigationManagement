@@ -33,8 +33,8 @@ def fetch_parcel_lat_lon(
 ):
 
     # First check if the pair (lat,lon) exists, we can use these if they do
-    if parcel["location"]["lat"] and parcel["location"]["lon"]:
-        return parcel["location"]["lat"], parcel["location"]["lon"]
+    if parcel["location"]["lat"] and parcel["location"]["long"]:
+        return parcel["location"]["lat"], parcel["location"]["long"]
 
     # if (lat,lon) is set to (None,None) then calculate the centroid from the WKT object and use that as
     wkt_polygon = parcel["hasGeometry"]["asWKT"]
