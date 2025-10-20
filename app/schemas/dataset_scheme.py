@@ -1,7 +1,7 @@
 import math
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
 class WeightScheme(BaseModel):
@@ -32,12 +32,12 @@ class Dataset(BaseModel):
 
     dataset_id: str
     date: datetime
-    soil_moisture_10: float
-    soil_moisture_20: float
-    soil_moisture_30: float
-    soil_moisture_40: float
-    soil_moisture_50: float
-    soil_moisture_60: float
+    soil_moisture_10: Optional[float] = 0.0
+    soil_moisture_20: Optional[float] = 0.0
+    soil_moisture_30: Optional[float] = 0.0
+    soil_moisture_40: Optional[float] = 0.0
+    soil_moisture_50: Optional[float] = 0.0
+    soil_moisture_60: Optional[float] = 0.0
     rain: float
     temperature: float
     humidity: float
