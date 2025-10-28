@@ -41,7 +41,7 @@ This service uses FastAPI as a web framework to serve APIs, alembic for database
 
 <h3> Deploying via docker </h3>
 
-After installing <code>docker-compose</code> you can run the following commands to run the application:
+After installing <code>docker compose</code> you can run the following commands to run the application:
 
 ```
 docker compose build
@@ -73,6 +73,22 @@ For a more detailed view of the APIs, checkout [API.md](API.md).
 
  - **Generate Analysis**: Call `GET /api/v1/dataset/{dataset_id}/analysis` to get detailed soil moisture analysis from your uploaded dataset. 
 
+# Testing
+
+ - Make sure you create a virtual environment, active it, and install it.
+ - It will detect the files and tests automatically, execute them, and report the results back to you.
+
+ - Run the tests with:
+
+```
+pytest
+```
+
+ - If that not working then run the tests with:
+
+```
+pytest --envfile .env tests/tests_.py -v
+```
 
 # Contribution
 
