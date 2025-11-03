@@ -27,3 +27,7 @@ def test_input_weights():
         50: 0.15,
         60: 0.15,
     }
+
+def test_registration_response():
+    response = client.post("eto/calculate-gk/")
+    assert response.status_code == 200
