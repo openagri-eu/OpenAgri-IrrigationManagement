@@ -1,7 +1,7 @@
 import math
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 class WeightScheme(BaseModel):
@@ -56,3 +56,8 @@ class DatasetAnalysis(BaseModel):
     saturation_dates: List[datetime]
     no_of_stress_days: int
     stress_dates: List[datetime]
+
+
+class IrrigationDatapoints(BaseModel):
+    high_dose_irrigation_days: List[datetime]
+    data_points: List[Dict[datetime, Any]]

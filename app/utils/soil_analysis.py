@@ -1,7 +1,7 @@
 from typing import List, Dict, Union, Tuple
 
 from schemas import Dataset as DatasetScheme
-from schemas import DatasetAnalysis
+from schemas import DatasetAnalysis, IrrigationDatapoints
 
 from datetime import datetime
 
@@ -171,4 +171,30 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme]) -> DatasetAnal
         saturation_dates=distinct_saturation_dates,
         no_of_stress_days=len(distinct_stress_dates),
         stress_dates=distinct_stress_dates,
+    )
+
+
+def calculate_irrigation_datapoints(dataset: List[DatasetScheme]) -> IrrigationDatapoints:
+    df = preprocess_dataset(dataset)
+
+    daily_rain = df['rain'].resample("1D").sum()
+
+    high_dose_irrigation = daily_rain[daily_rain >= settings.HIGH_DOSE_THRESHOLD_MM]
+    high_dose_irrigation_events_dates = [d.isoformat() for d in high_dose_irrigation.index]
+
+    soil_cols = [col for col in df.columns if 'soil_moisture' in col]
+    data_points_list = []
+    df_soil_data = df[soil_cols]
+    for ts in high_dose_irrigation_events_dates:
+        soil_data_row = df_soil_data.loc[ts].to_dict()
+        # Clean NaNs to None for valid JSON response
+        soil_data_cleaned = {
+            k: (None if pd.isna(v) else v)
+            for k, v in soil_data_row.items()
+        }
+        data_points_list.append({ts: soil_data_cleaned})
+
+    return IrrigationDatapoints(
+        high_dose_irrigation_days=high_dose_irrigation_events_dates,
+        data_points=data_points_list
     )
