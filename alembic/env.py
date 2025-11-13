@@ -23,7 +23,14 @@ import sys
 from os.path import relpath, abspath, join
 from os import getcwd
 sys.path.insert(0, join(abspath(getcwd()), "app"))
+
+# Import all models to ensure they're registered
 import models
+from models.user import User
+from models.dataset_model import Dataset
+from models.soil_model import Soil
+from models.soil_analysis_model import SoilAnalysisTimeseries, SoilAnalysisEvent
+
 target_metadata = models.User.metadata
 
 # other values from the config, defined by the needs of env.py,
