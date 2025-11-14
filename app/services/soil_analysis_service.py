@@ -52,6 +52,7 @@ class AnalysisConfig:
 @dataclass
 class TimeseriesRecord:
     """Single analysis result record for a timestamp."""
+    dataset_id: int
     date: date
     avg_soil_moisture: float
     smi: float
@@ -316,12 +317,12 @@ class SoilAnalysisService:
         # Step 7: Detect saturation events
         sat_events, event_types = self.detect_saturation_events(df, moisture_cols, field_capacity)
         df["Saturation_Event"] = df["Date"].isin(sat_events)
-        
+
         # Map event types to rows
-        event_type_map = {event_date: event_type 
+        event_type_map = {event_date: event_type
                          for event_date, event_type in zip(sat_events, event_types)}
-        df["Saturation_Type"] = df["Date"].map(event_type_map)
-        
+        df["Saturation_Type"] = df["Date"].map(event_type_map, na_action='ignore')
+
         # Clean up temporary rolling columns
         df.drop(columns=["Rain_Rolling", "ETo_Rolling"], inplace=True)
         
@@ -440,11 +441,12 @@ class SoilAnalysisService:
         
         # Step 1: Compute timeseries
         df_computed, moisture_cols = self.compute_timeseries(df, field_capacity, wilting_point)
-        
+
         # Step 2: Build result timeseries records
         timeseries_records = []
         for _, row in df_computed.iterrows():
             timeseries_records.append(TimeseriesRecord(
+                dataset_id=row.get("Dataset_ID", 0),
                 date=row["Date"].date() if hasattr(row["Date"], 'date') else row["Date"],
                 avg_soil_moisture=row.get("Avg_Soil_Moisture"),
                 smi=row.get("SMI"),
@@ -452,7 +454,7 @@ class SoilAnalysisService:
                 water_balance=row.get("Water_Balance"),
                 irrigation_need=row.get("Irrigation_Need", "OK"),
                 saturation_event=row.get("Saturation_Event", False),
-                saturation_type=row.get("Saturation_Type")
+                saturation_type=row.get("Saturation_Type") if pd.notna(row.get("Saturation_Type")) else None
             ))
         
         # Step 3: Aggregate events
@@ -460,7 +462,7 @@ class SoilAnalysisService:
         
         # Step 4: Compute summary stats
         stats = self.compute_summary_stats(df_computed)
-        
+
         # Step 5: Build result
         result = SoilAnalysisResult(
             timeseries=timeseries_records,

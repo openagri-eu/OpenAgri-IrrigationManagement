@@ -216,7 +216,7 @@ class DatasetUploadResponse(BaseModel):
     2. Validation errors: errors[] with row numbers and details
     """
     success: bool
-    dataset_id: Optional[str] = None
+    dataset_name: Optional[str] = None
     row_count: Optional[int] = None
     uploaded_at: Optional[datetime] = None
     errors: List[CSVValidationError] = Field(default_factory=list)
@@ -277,7 +277,7 @@ class SoilAnalysisEventRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     
     id: int
-    dataset_id: int
+    dataset_name: str
     event_type: str  # "Rain-triggered", "Irrigation-triggered", etc.
     count: int
     first_occurrence: Optional[date] = None
@@ -299,7 +299,6 @@ class SoilAnalysisSummary(BaseModel):
     
     Used by dashboard to show overall dataset statistics.
     """
-    dataset_id: int
     dataset_name: str
     soil_name: str
     total_records: int

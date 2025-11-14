@@ -1,5 +1,8 @@
 from typing import Optional, Any, List
 
+from apscheduler.jobstores.memory import MemoryJobStore
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
 from password_validator import PasswordValidator
 from pydantic import field_validator, AnyHttpUrl
 from pydantic_settings import BaseSettings
@@ -77,6 +80,13 @@ class Settings(BaseSettings):
 
     # Frontend
     USING_FRONTEND: bool
+
+    # Asynchronous Job Scheduler
+    jobstores: dict = {
+        'default': MemoryJobStore()
+    }
+
+    scheduler: AsyncIOScheduler = AsyncIOScheduler(jobstores=jobstores)
 
 
 settings = Settings()

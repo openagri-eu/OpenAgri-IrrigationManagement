@@ -36,12 +36,13 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint('id'),
         sa.UniqueConstraint('name')
     )
-    
+
     # Add columns to dataset table
+    op.add_column('dataset', sa.Column('name', sa.String(), nullable=False))
     op.add_column('dataset', sa.Column('soil_id', sa.Integer(), nullable=True))
     op.add_column('dataset', sa.Column('uploaded_at', sa.DateTime(), nullable=True, server_default=sa.func.now()))
     op.add_column('dataset', sa.Column('analysis_status', sa.String(length=20), nullable=True, server_default='PENDING'))
-    
+
     # Add foreign key constraint to dataset.soil_id
     op.create_foreign_key('fk_dataset_soil_id', 'dataset', 'soil', ['soil_id'], ['id'], ondelete='SET NULL')
     
@@ -56,6 +57,7 @@ def upgrade() -> None:
         sa.Column('water_balance', sa.Float(), nullable=True),
         sa.Column('irrigation_need', sa.String(length=50), nullable=True),
         sa.Column('saturation_event', sa.Boolean(), nullable=False, server_default='false'),
+        sa.Column('saturation_type', sa.String(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.PrimaryKeyConstraint('id'),
         sa.ForeignKeyConstraint(['dataset_id'], ['dataset.id'], ondelete='CASCADE')
@@ -64,19 +66,20 @@ def upgrade() -> None:
     # Create soil_analysis_event table
     op.create_table('soil_analysis_event',
         sa.Column('id', sa.Integer(), nullable=False),
-        sa.Column('dataset_id', sa.Integer(), nullable=False),
+        sa.Column('dataset_name', sa.String(), nullable=False),
         sa.Column('event_type', sa.String(length=50), nullable=False),
         sa.Column('count', sa.Integer(), nullable=False),
         sa.Column('first_occurrence', sa.Date(), nullable=True),
         sa.Column('last_occurrence', sa.Date(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.PrimaryKeyConstraint('id'),
-        sa.ForeignKeyConstraint(['dataset_id'], ['dataset.id'], ondelete='CASCADE')
+        # sa.ForeignKeyConstraint(['dataset_name'], ['dataset.name'], ondelete='CASCADE')
     )
-    
+
     # Create indexes
     op.create_index('ix_soil_analysis_timeseries_dataset_date', 'soil_analysis_timeseries', ['dataset_id', 'date'])
-    op.create_index('ix_soil_analysis_event_dataset_type', 'soil_analysis_event', ['dataset_id', 'event_type'])
+    op.create_index('ix_soil_analysis_event_dataset_type', 'soil_analysis_event', ['dataset_name', 'event_type'])
+    op.create_index('ix_dataset_name', 'dataset', ['name'])
 
 
 def downgrade() -> None:
@@ -93,6 +96,7 @@ def downgrade() -> None:
     op.drop_column('dataset', 'analysis_status')
     op.drop_column('dataset', 'uploaded_at')
     op.drop_column('dataset', 'soil_id')
+    op.drop_column('dataset', 'name')
     
     # Drop soil table
     op.drop_table('soil')

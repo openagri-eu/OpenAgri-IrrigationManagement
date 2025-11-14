@@ -242,7 +242,7 @@ class CrudDatasetV2(CRUDBase[Dataset, DatasetSchema, dict]):
 
                     # Create Dataset ORM object
                     db_dataset = Dataset(
-                        dataset_id=dataset_name,
+                        name=dataset_name,
                         date=validated_row.measurement_date,
                         soil_id=soil_id,
                         soil_moisture_10=validated_row.soil_moisture_10,

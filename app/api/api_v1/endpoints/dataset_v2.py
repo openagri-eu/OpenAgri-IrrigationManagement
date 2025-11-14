@@ -9,12 +9,14 @@ FastAPI endpoints for:
 - Summary statistics query
 """
 
+import os
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.orm import Session
 import logging
 
 from api import deps
+from core.config import settings
 from crud.soil import soil as soil_crud
 from crud.dataset_operations_v2 import CrudDatasetV2
 from models import Dataset
@@ -27,7 +29,6 @@ from schemas.soil_analysis_v2 import (
 )
 from schemas import Message
 from jobs.soil_analysis_job_v2 import submit_analysis_job
-from core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -115,19 +116,19 @@ async def upload_dataset(
         result = crud_dataset_v2.batch_insert_from_csv(
             db=db,
             csv_content=text_content,
-            dataset_name=file.filename if file.filename else "uploaded_dataset",
+            dataset_name=os.path.splitext(file.filename)[0].lower() if file.filename else "uploaded_dataset",
             soil_id=soil_id
         )
         response = DatasetUploadResponse(
             success=True,
-            dataset_id=file.filename,
+            dataset_name=result[0][0].name,
             row_count=len(result[0]),
             errors=result[1]
         )
         if result is None:
             raise HTTPException(status_code=400, detail="CSV validation failed")
 
-        logger.info(f"Dataset uploaded: {response.dataset_id}, {response.row_count} rows")
+        logger.info(f"Dataset uploaded: {response.dataset_name}, {response.row_count} rows")
         
         return response
     
@@ -138,9 +139,9 @@ async def upload_dataset(
         raise HTTPException(status_code=400, detail=f"Upload failed: {str(e)}")
 
 
-@router.post("/v2/{dataset_id}/analyze", response_model=Message, dependencies=[Depends(deps.get_jwt)])
+@router.post("/v2/{dataset_name}/analyze", response_model=Message, dependencies=[Depends(deps.get_jwt)])
 async def analyze_dataset(
-    dataset_id: int,
+    dataset_name: str,
     db: Session = Depends(deps.get_db)
 ):
     """
@@ -156,14 +157,14 @@ async def analyze_dataset(
     """
     try:
         # Verify dataset exists
-        dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+        dataset = db.query(Dataset).filter(Dataset.name == dataset_name).first()
         if not dataset:
             raise HTTPException(status_code=404, detail="Dataset not found")
-        
+
         # Submit to background job
-        job_id = await submit_analysis_job(dataset_id, settings.scheduler)
-        
-        logger.info(f"Analysis job submitted for dataset {dataset_id}, job_id={job_id}")
+        job_id = submit_analysis_job(dataset_name, settings.scheduler)
+
+        logger.info(f"Analysis job submitted for dataset {dataset_name}, job_id={job_id}")
         
         return Message(message=f"Analysis submitted. Job ID: {job_id}")
     
@@ -176,17 +177,17 @@ async def analyze_dataset(
 
 @router.get("/v2/{dataset_id}/status", dependencies=[Depends(deps.get_jwt)])
 def get_dataset_status(
-    dataset_id: int,
+    dataset_name: str,
     db: Session = Depends(deps.get_db)
 ):
     """Get dataset analysis status: PENDING, PROCESSING, COMPLETED, FAILED."""
-    dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+    dataset = db.query(Dataset).filter(Dataset.name == dataset_name).first()
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
     
     return {
-        "dataset_id": dataset_id,
-        "status": dataset.analysis_status.value if dataset.analysis_status else "UNKNOWN"
+        "dataset_name": dataset_name,
+        "status": dataset.analysis_status.value if dataset.analysis_status.value else "UNKNOWN"
     }
 
 
@@ -196,7 +197,7 @@ def get_dataset_status(
 
 @router.get("/v2/{dataset_id}/timeseries", response_model=PaginatedTimeseriesResponse, dependencies=[Depends(deps.get_jwt)])
 def get_timeseries(
-    dataset_id: int,
+    dataset_id: str,
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: Session = Depends(deps.get_db)
@@ -213,7 +214,7 @@ def get_timeseries(
     """
     try:
         # Verify dataset exists
-        dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+        dataset = db.query(Dataset).filter(Dataset.dataset_id == dataset_id).first()
         if not dataset:
             raise HTTPException(status_code=404, detail="Dataset not found")
         
@@ -243,7 +244,7 @@ def get_timeseries(
 
 @router.get("/v2/{dataset_id}/events", response_model=List[SoilAnalysisEventRead], dependencies=[Depends(deps.get_jwt)])
 def get_events(
-    dataset_id: int,
+    dataset_id: str,
     event_type: Optional[str] = Query(None),
     db: Session = Depends(deps.get_db)
 ):
@@ -323,9 +324,9 @@ def get_summary(
         event_summary = {}
         for event in events:
             event_summary[event.event_type] = event.count
-        
-        return SoilAnalysisSummaryRead(
-            dataset_id=dataset_id,
+
+        return SoilAnalysisSummary(
+            dataset_name=dataset_id,
             total_records=len(records),
             avg_smi=sum(smis) / len(smis) if smis else 0.0,
             max_smi=max(smis) if smis else 0.0,

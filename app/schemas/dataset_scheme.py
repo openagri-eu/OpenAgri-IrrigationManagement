@@ -30,7 +30,8 @@ class WeightScheme(BaseModel):
 class Dataset(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    dataset_id: str
+    dataset_id: int
+    name: str
     date: datetime
     soil_moisture_10: float
     soil_moisture_20: float

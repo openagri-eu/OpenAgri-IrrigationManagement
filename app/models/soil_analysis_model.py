@@ -97,7 +97,7 @@ class SoilAnalysisTimeseries(Base):
     
     # Event classification (if saturation_event=True)
     # CONSIDERATION: Make nullable since not all rows have events
-    saturation_type = Column(Enum(EventType), nullable=True)
+    saturation_type = Column(String(), nullable=True)
     
     # ========== METADATA ==========
     # Timestamp when analysis was computed
@@ -138,7 +138,7 @@ class SoilAnalysisEvent(Base):
     id = Column(Integer, primary_key=True)
     
     # FK to Dataset
-    dataset_id = Column(Integer, ForeignKey("dataset.id", ondelete="CASCADE"), nullable=False, index=True)
+    dataset_name = Column(Integer, ForeignKey("dataset.name", ondelete="CASCADE"), nullable=False, index=True)
     
     # Event type classification
     event_type = Column(Enum(EventType), nullable=False, index=True)
@@ -153,11 +153,11 @@ class SoilAnalysisEvent(Base):
     
     # ========== METADATA ==========
     # When aggregation was computed
-    computed_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+    created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     
     # Relationships
     dataset: Mapped["Dataset"] = relationship("Dataset")
     
     def __repr__(self) -> str:
-        return (f"SoilAnalysisEvent(dataset_id={self.dataset_id}, event_type={self.event_type}, "
+        return (f"SoilAnalysisEvent(dataset_id={self.dataset_name}, event_type={self.event_type}, "
                 f"count={self.count}, first={self.first_occurrence}, last={self.last_occurrence})")

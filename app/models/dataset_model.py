@@ -51,7 +51,8 @@ class Dataset(Base):
     id = Column(Integer, primary_key=True)
     
     # Original v1 columns (sensor data from CSV)
-    dataset_id = Column(String, nullable=True, index=True)  # User-provided dataset name
+    dataset_id = Column(String, nullable=True, index=True)  # User-provided dataset identifier
+    name = Column(String, nullable=False, index=True)  # Original filename
     date = Column(DateTime, nullable=True, index=True)
     soil_moisture_10 = Column(Float, nullable=True)
     soil_moisture_20 = Column(Float, nullable=True)
@@ -86,4 +87,4 @@ class Dataset(Base):
     )
     
     def __repr__(self) -> str:
-        return f"Dataset(id={self.id}, dataset_id={self.dataset_id}, date={self.date}, soil_id={self.soil_id})"
+        return f"Dataset(id={self.id}, dataset_name={self.name}, date={self.date}, soil_id={self.soil_id})"

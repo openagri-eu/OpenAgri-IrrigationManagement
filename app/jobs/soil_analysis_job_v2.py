@@ -21,14 +21,14 @@ import logging
 from typing import Optional, Dict, Any
 
 from models.dataset_model import Dataset, AnalysisStatus
-from models.soil_analysis_model import SoilAnalysisTimeseries, SoilAnalysisEvent
-from services.soil_analysis_service import SoilAnalysisService
+from models.soil_analysis_model import SoilAnalysisTimeseries, SoilAnalysisEvent, EventType
+from services.soil_analysis_service import SoilAnalysisService, SoilAnalysisResult
 from db.session import SessionLocal
 
 logger = logging.getLogger(__name__)
 
 
-def retrieve_dataset_records(db: Session, dataset_id: int) -> tuple[Optional[list], Optional[Dict], str]:
+def retrieve_dataset_records(db: Session, dataset_name: int) -> tuple[Optional[list], Optional[Dict], str]:
     """
     Retrieve raw dataset records and associated soil parameters.
     
@@ -44,16 +44,16 @@ def retrieve_dataset_records(db: Session, dataset_id: int) -> tuple[Optional[lis
     """
     try:
         # Query all records for this dataset ID
-        records = db.query(Dataset).filter(Dataset.id == dataset_id).all()
+        records = db.query(Dataset).filter(Dataset.name == dataset_name).all()
         
         if not records:
-            return None, None, f"No dataset found with id={dataset_id}"
-        
+            return None, None, f"No dataset found with name={dataset_name}"
+
         # Get first record to access metadata
         first_record = records[0]
         
         if not first_record.soil_id:
-            return None, None, f"Dataset {dataset_id} has no associated soil_id"
+            return None, None, f"Dataset {dataset_name} has no associated soil_id"
         
         # Retrieve soil parameters
         soil = first_record.soil
@@ -66,7 +66,7 @@ def retrieve_dataset_records(db: Session, dataset_id: int) -> tuple[Optional[lis
             'soil_name': soil.name,
         }
         
-        logger.info(f"Retrieved {len(records)} records for dataset_id={dataset_id} "
+        logger.info(f"Retrieved {len(records)} records for dataset_name={dataset_name} "
                    f"with soil='{soil.name}'")
         
         return records, soil_params, None
@@ -85,7 +85,7 @@ def build_dataframe(records: list) -> pd.DataFrame:
         records: List of Dataset ORM objects
         
     Returns:
-        DataFrame with columns: Date, soil_moisture_10-60, temperature, humidity, rain
+        DataFrame with columns: Date, soil_moisture_10-60, temperature, humidity, rain, Dataset_ID
     """
     data = []
     for record in records:
@@ -100,6 +100,7 @@ def build_dataframe(records: list) -> pd.DataFrame:
             'Temperature': record.temperature,
             'Humidity': record.humidity,
             'Rain': record.rain,
+            'Dataset_ID': record.id
         })
     
     df = pd.DataFrame(data)
@@ -108,16 +109,15 @@ def build_dataframe(records: list) -> pd.DataFrame:
     return df
 
 
-def store_timeseries_results(db: Session, dataset_id: int, 
-                            analysis_result) -> tuple[int, Optional[str]]:
+def store_timeseries_results(db: Session,
+                            analysis_result: SoilAnalysisResult) -> tuple[int, Optional[str]]:
     """
     Store timeseries analysis results in SoilAnalysisTimeseries table.
     
     Args:
         db: Database session
-        dataset_id: FK to Dataset
         analysis_result: SoilAnalysisResult from service
-        
+
     Returns:
         (record_count, error_message)
     """
@@ -126,7 +126,7 @@ def store_timeseries_results(db: Session, dataset_id: int,
         
         for ts_record in analysis_result.timeseries:
             db_record = SoilAnalysisTimeseries(
-                dataset_id=dataset_id,
+                dataset_id=ts_record.dataset_id,
                 date=ts_record.date,
                 avg_soil_moisture=ts_record.avg_soil_moisture,
                 smi=ts_record.smi,
@@ -134,7 +134,7 @@ def store_timeseries_results(db: Session, dataset_id: int,
                 water_balance=ts_record.water_balance,
                 irrigation_need=ts_record.irrigation_need,
                 saturation_event=ts_record.saturation_event,
-                saturation_type=ts_record.saturation_type
+                saturation_type=ts_record.saturation_type if ts_record.saturation_type else None
             )
             timeseries_records.append(db_record)
         
@@ -157,7 +157,7 @@ def store_timeseries_results(db: Session, dataset_id: int,
         return 0, error_msg
 
 
-def store_event_results(db: Session, dataset_id: int, 
+def store_event_results(db: Session, dataset_name: str,
                        analysis_result) -> tuple[int, Optional[str]]:
     """
     Store pre-aggregated event results in SoilAnalysisEvent table.
@@ -175,7 +175,7 @@ def store_event_results(db: Session, dataset_id: int,
         
         for event in analysis_result.events:
             db_record = SoilAnalysisEvent(
-                dataset_id=dataset_id,
+                dataset_name=dataset_name,
                 event_type=event.event_type,
                 count=event.count,
                 first_occurrence=event.first_occurrence,
@@ -202,7 +202,7 @@ def store_event_results(db: Session, dataset_id: int,
         return 0, error_msg
 
 
-async def analyze_dataset_job(dataset_id: int) -> Dict[str, Any]:
+async def analyze_dataset_job(dataset_name: str) -> Dict[str, Any]:
     """
     Main background job: orchestrate dataset analysis.
     
@@ -215,7 +215,7 @@ async def analyze_dataset_job(dataset_id: int) -> Dict[str, Any]:
     6. Update dataset status
     
     Args:
-        dataset_id: Dataset primary key to analyze
+        dataset_name: Dataset name to analyze
         
     Returns:
         Job result dict with success status and metrics
@@ -223,7 +223,7 @@ async def analyze_dataset_job(dataset_id: int) -> Dict[str, Any]:
     db = SessionLocal()
     result = {
         'success': False,
-        'dataset_id': dataset_id,
+        'dataset_name': dataset_name,
         'timeseries_count': 0,
         'events_count': 0,
         'error': None,
@@ -231,10 +231,10 @@ async def analyze_dataset_job(dataset_id: int) -> Dict[str, Any]:
     }
     
     try:
-        logger.info(f"Starting analysis job for dataset_id={dataset_id}")
+        logger.info(f"Starting analysis job for dataset_name={dataset_name}")
         
         # Step 1: Retrieve dataset
-        records, soil_params, error = retrieve_dataset_records(db, dataset_id)
+        records, soil_params, error = retrieve_dataset_records(db, dataset_name)
         
         if error:
             result['error'] = error
@@ -266,7 +266,7 @@ async def analyze_dataset_job(dataset_id: int) -> Dict[str, Any]:
             return result
         
         # Step 4: Store timeseries results
-        ts_count, ts_error = store_timeseries_results(db, dataset_id, analysis_result)
+        ts_count, ts_error = store_timeseries_results(db, analysis_result)
         
         if ts_error:
             result['error'] = ts_error
@@ -275,7 +275,7 @@ async def analyze_dataset_job(dataset_id: int) -> Dict[str, Any]:
         result['timeseries_count'] = ts_count
         
         # Step 5: Store event results
-        events_count, events_error = store_event_results(db, dataset_id, analysis_result)
+        events_count, events_error = store_event_results(db, dataset_name, analysis_result)
         
         if events_error:
             result['error'] = events_error
@@ -285,15 +285,13 @@ async def analyze_dataset_job(dataset_id: int) -> Dict[str, Any]:
         
         # Step 6: Update dataset status
         try:
-            dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
-            if dataset:
-                dataset.analysis_status = AnalysisStatus.COMPLETED
-                db.commit()
-                logger.info(f"Marked dataset_id={dataset_id} as COMPLETED")
+            for rec in records:
+                rec.analysis_status = AnalysisStatus.COMPLETED
+            db.commit()
             
             result['success'] = True
             result['completed_at'] = datetime.utcnow()
-            
+
             logger.info(f"Analysis job complete: {ts_count} timeseries, {events_count} events")
             
         except SQLAlchemyError as e:
@@ -305,12 +303,12 @@ async def analyze_dataset_job(dataset_id: int) -> Dict[str, Any]:
         return result
     
     except Exception as e:
-        logger.exception(f"Unexpected error in analysis job for dataset_id={dataset_id}")
+        logger.exception(f"Unexpected error in analysis job for dataset_id={dataset_name}")
         result['error'] = str(e)
         
         # Try to mark as FAILED
         try:
-            dataset = db.query(Dataset).filter(Dataset.id == dataset_id).first()
+            dataset = db.query(Dataset).filter(Dataset.id == dataset_name).first()
             if dataset:
                 dataset.analysis_status = AnalysisStatus.FAILED
                 db.commit()
@@ -323,7 +321,7 @@ async def analyze_dataset_job(dataset_id: int) -> Dict[str, Any]:
         db.close()
 
 
-def submit_analysis_job(dataset_id: int, scheduler) -> Optional[str]:
+def submit_analysis_job(dataset_name: str, scheduler) -> Optional[str]:
     """
     Submit analysis job to APScheduler.
     
@@ -337,13 +335,13 @@ def submit_analysis_job(dataset_id: int, scheduler) -> Optional[str]:
     try:
         job = scheduler.add_job(
             analyze_dataset_job,
-            args=[dataset_id],
-            name=f"Analyze dataset {dataset_id}"
+            args=[dataset_name],
+            name=f"Analyze dataset {dataset_name}"
         )
         
-        logger.info(f"Submitted analysis job: job_id={job.id}, dataset_id={dataset_id}")
+        logger.info(f"Submitted analysis job: job_id={job.id}, dataset_id={dataset_name}")
         return job.id
     
     except Exception as e:
-        logger.error(f"Failed to submit analysis job for dataset_id={dataset_id}: {e}")
+        logger.error(f"Failed to submit analysis job for dataset_id={dataset_name}: {e}")
         return None
