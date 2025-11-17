@@ -68,7 +68,7 @@ class SoilAnalysisTimeseries(Base):
     dataset_id = Column(Integer, ForeignKey("dataset.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Timestamp (copied from source Dataset.date for convenience)
-    date = Column(Date, nullable=False, index=True)
+    date = Column(DateTime, nullable=False, index=True)
     
     # ========== RAW & DERIVED METRICS ==========
     # Average soil moisture across all depths (%) - from algorithm
@@ -138,18 +138,18 @@ class SoilAnalysisEvent(Base):
     id = Column(Integer, primary_key=True)
     
     # FK to Dataset
-    dataset_name = Column(Integer, ForeignKey("dataset.name", ondelete="CASCADE"), nullable=False, index=True)
+    dataset_name = Column(String(), ForeignKey("dataset.name", ondelete="CASCADE"), nullable=False, index=True)
     
     # Event type classification
-    event_type = Column(Enum(EventType), nullable=False, index=True)
+    event_type = Column(String(), nullable=False, default=EventType.UNKNOWN)
     
     # ========== AGGREGATED METRICS ==========
     # Count of events of this type
     count = Column(Integer, nullable=False, default=0)
     
     # First and last occurrence dates of this event type
-    first_occurrence = Column(Date, nullable=True)
-    last_occurrence = Column(Date, nullable=True)
+    first_occurrence = Column(DateTime, nullable=True)
+    last_occurrence = Column(DateTime, nullable=True)
     
     # ========== METADATA ==========
     # When aggregation was computed

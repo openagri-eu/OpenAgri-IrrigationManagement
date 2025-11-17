@@ -242,7 +242,7 @@ class SoilAnalysisTimeseriesRead(BaseModel):
     
     id: int
     dataset_id: int
-    date: date
+    date: datetime
     avg_soil_moisture: float = Field(..., description="Average across all depth sensors (%)")
     smi: float = Field(..., ge=0, le=1, description="Soil Moisture Index [0.0=wilting, 1.0=saturated]")
     eto: float = Field(..., ge=0, description="Evapotranspiration (mm/day)")
@@ -280,9 +280,9 @@ class SoilAnalysisEventRead(BaseModel):
     dataset_name: str
     event_type: str  # "Rain-triggered", "Irrigation-triggered", etc.
     count: int
-    first_occurrence: Optional[date] = None
-    last_occurrence: Optional[date] = None
-    computed_at: datetime
+    first_occurrence: Optional[datetime] = None
+    last_occurrence: Optional[datetime] = None
+    created_at: datetime
 
 
 class PaginatedEventsResponse(BaseModel):

@@ -19,7 +19,7 @@ EXTENSIBILITY:
 
 from typing import List, Tuple, Optional, Dict, Any
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 import numpy as np
 import pandas as pd
 import logging
@@ -53,7 +53,7 @@ class AnalysisConfig:
 class TimeseriesRecord:
     """Single analysis result record for a timestamp."""
     dataset_id: int
-    date: date
+    date: datetime
     avg_soil_moisture: float
     smi: float
     eto: float
@@ -68,8 +68,8 @@ class EventAggregation:
     """Aggregated event summary."""
     event_type: str
     count: int
-    first_occurrence: Optional[date] = None
-    last_occurrence: Optional[date] = None
+    first_occurrence: Optional[datetime] = None
+    last_occurrence: Optional[datetime] = None
 
 
 @dataclass
@@ -79,8 +79,8 @@ class SoilAnalysisResult:
     events: List[EventAggregation] = field(default_factory=list)
     
     # Summary statistics
-    date_range_start: Optional[date] = None
-    date_range_end: Optional[date] = None
+    date_range_start: Optional[datetime] = None
+    date_range_end: Optional[datetime] = None
     total_records: int = 0
     avg_smi: float = 0.0
     max_smi: float = 0.0
@@ -438,7 +438,7 @@ class SoilAnalysisService:
         # Ensure Date column is datetime
         if not pd.api.types.is_datetime64_any_dtype(df["Date"]):
             df["Date"] = pd.to_datetime(df["Date"])
-        
+
         # Step 1: Compute timeseries
         df_computed, moisture_cols = self.compute_timeseries(df, field_capacity, wilting_point)
 
@@ -447,7 +447,7 @@ class SoilAnalysisService:
         for _, row in df_computed.iterrows():
             timeseries_records.append(TimeseriesRecord(
                 dataset_id=row.get("Dataset_ID", 0),
-                date=row["Date"].date() if hasattr(row["Date"], 'date') else row["Date"],
+                date=row["Date"] if hasattr(row["Date"], 'date') else row["Date"],
                 avg_soil_moisture=row.get("Avg_Soil_Moisture"),
                 smi=row.get("SMI"),
                 eto=row.get("ETo"),

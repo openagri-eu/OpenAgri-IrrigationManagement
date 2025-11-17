@@ -195,9 +195,9 @@ def get_dataset_status(
 # TIMESERIES QUERY ENDPOINTS
 # ============================================================================
 
-@router.get("/v2/{dataset_id}/timeseries", response_model=PaginatedTimeseriesResponse, dependencies=[Depends(deps.get_jwt)])
+@router.get("/v2/{dataset_name}/timeseries", response_model=PaginatedTimeseriesResponse, dependencies=[Depends(deps.get_jwt)])
 def get_timeseries(
-    dataset_id: str,
+    dataset_name: str,
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: Session = Depends(deps.get_db)
@@ -214,18 +214,23 @@ def get_timeseries(
     """
     try:
         # Verify dataset exists
-        dataset = db.query(Dataset).filter(Dataset.dataset_id == dataset_id).first()
+        dataset = db.query(Dataset).filter(Dataset.name == dataset_name).first()
         if not dataset:
             raise HTTPException(status_code=404, detail="Dataset not found")
-        
-        # Query timeseries
-        query = db.query(SoilAnalysisTimeseries).filter(
-            SoilAnalysisTimeseries.dataset_id == dataset_id
-        ).order_by(SoilAnalysisTimeseries.date)
+
+        # Query timeseries joined with dataset by name
+        query = db.query(SoilAnalysisTimeseries).join(
+            Dataset,
+            SoilAnalysisTimeseries.dataset_id == Dataset.id
+        ).filter(
+            Dataset.name == dataset_name
+        ).order_by(
+            SoilAnalysisTimeseries.date
+        )
         
         total = query.count()
         items = query.limit(limit).offset(offset).all()
-        
+
         return PaginatedTimeseriesResponse(
             total=total,
             limit=limit,
@@ -242,9 +247,9 @@ def get_timeseries(
 # EVENT QUERY ENDPOINTS
 # ============================================================================
 
-@router.get("/v2/{dataset_id}/events", response_model=List[SoilAnalysisEventRead], dependencies=[Depends(deps.get_jwt)])
+@router.get("/v2/{dataset_name}/events", response_model=List[SoilAnalysisEventRead], dependencies=[Depends(deps.get_jwt)])
 def get_events(
-    dataset_id: str,
+    dataset_name: str,
     event_type: Optional[str] = Query(None),
     db: Session = Depends(deps.get_db)
 ):
@@ -264,7 +269,7 @@ def get_events(
     """
     try:
         query = db.query(SoilAnalysisEvent).filter(
-            SoilAnalysisEvent.dataset_id == dataset_id
+            SoilAnalysisEvent.dataset_name == dataset_name
         )
         
         if event_type:

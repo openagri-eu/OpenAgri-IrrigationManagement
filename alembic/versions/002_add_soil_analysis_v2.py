@@ -22,6 +22,8 @@ def upgrade() -> None:
     # Create AnalysisStatus enum type
     analysis_status_enum = sa.Enum('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', name='analysisstatus')
     analysis_status_enum.create(op.get_bind(), checkfirst=True)
+    event_type_enum = sa.Enum('Rain-triggered', 'Irrigation-triggered', 'Unkown', 'Saturation', 'Irrigation', name='eventtype')
+    event_type_enum.create(op.get_bind(), checkfirst=True)
 
     # Create soil table
     op.create_table('soil',
@@ -38,10 +40,11 @@ def upgrade() -> None:
     )
 
     # Add columns to dataset table
+    op.alter_column('dataset', 'date', existing_type=sa.Date(), type_=sa.DateTime(), nullable=True)
     op.add_column('dataset', sa.Column('name', sa.String(), nullable=False))
     op.add_column('dataset', sa.Column('soil_id', sa.Integer(), nullable=True))
     op.add_column('dataset', sa.Column('uploaded_at', sa.DateTime(), nullable=True, server_default=sa.func.now()))
-    op.add_column('dataset', sa.Column('analysis_status', sa.String(length=20), nullable=True, server_default='PENDING'))
+    op.add_column('dataset', sa.Column('analysis_status', sa.String(length=20), nullable=False, server_default='PENDING'))
 
     # Add foreign key constraint to dataset.soil_id
     op.create_foreign_key('fk_dataset_soil_id', 'dataset', 'soil', ['soil_id'], ['id'], ondelete='SET NULL')
@@ -50,7 +53,7 @@ def upgrade() -> None:
     op.create_table('soil_analysis_timeseries',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('dataset_id', sa.Integer(), nullable=False),
-        sa.Column('date', sa.Date(), nullable=False),
+        sa.Column('date', sa.DateTime(), nullable=False),
         sa.Column('avg_soil_moisture', sa.Float(), nullable=True),
         sa.Column('smi', sa.Float(), nullable=True),
         sa.Column('eto', sa.Float(), nullable=True),
@@ -67,10 +70,10 @@ def upgrade() -> None:
     op.create_table('soil_analysis_event',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('dataset_name', sa.String(), nullable=False),
-        sa.Column('event_type', sa.String(length=50), nullable=False),
+        sa.Column('event_type', sa.String(length=50), nullable=False, server_default='Unkown'),
         sa.Column('count', sa.Integer(), nullable=False),
-        sa.Column('first_occurrence', sa.Date(), nullable=True),
-        sa.Column('last_occurrence', sa.Date(), nullable=True),
+        sa.Column('first_occurrence', sa.DateTime(), nullable=True),
+        sa.Column('last_occurrence', sa.DateTime(), nullable=True),
         sa.Column('created_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.PrimaryKeyConstraint('id'),
         # sa.ForeignKeyConstraint(['dataset_name'], ['dataset.name'], ondelete='CASCADE')
@@ -104,3 +107,5 @@ def downgrade() -> None:
     # Drop enum type
     analysis_status_enum = sa.Enum('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', name='analysisstatus')
     analysis_status_enum.drop(op.get_bind(), checkfirst=True)
+    event_type_enum = sa.Enum('Rain-triggered', 'Irrigation-triggered', 'Unkown', 'Saturation', 'Irrigation', name='eventtype')
+    event_type_enum.drop(op.get_bind(), checkfirst=True)

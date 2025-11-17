@@ -172,8 +172,9 @@ def store_event_results(db: Session, dataset_name: str,
     """
     try:
         event_records = []
-        
+
         for event in analysis_result.events:
+            print(event.event_type)
             db_record = SoilAnalysisEvent(
                 dataset_name=dataset_name,
                 event_type=event.event_type,
