@@ -58,6 +58,16 @@ class DatasetAnalysis(BaseModel):
     stress_dates: List[datetime]
 
 
+class DataPoints(BaseModel):
+    date: datetime
+    soil_moisture_10: Optional[float] = 0.0
+    soil_moisture_20: Optional[float] = 0.0
+    soil_moisture_30: Optional[float] = 0.0
+    soil_moisture_40: Optional[float] = 0.0
+    soil_moisture_50: Optional[float] = 0.0
+    soil_moisture_60: Optional[float] = 0.0
+
+
 class IrrigationDatapoints(BaseModel):
     high_dose_irrigation_days: List[datetime]
-    data_points: List[Dict[datetime, Any]]
+    data_points: List[DataPoints]

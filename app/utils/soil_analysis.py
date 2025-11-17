@@ -1,7 +1,7 @@
 from typing import List, Dict, Union, Tuple
 
 from schemas import Dataset as DatasetScheme
-from schemas import DatasetAnalysis, IrrigationDatapoints
+from schemas import DatasetAnalysis, IrrigationDatapoints, DataPoints
 
 from datetime import datetime
 
@@ -182,17 +182,20 @@ def calculate_irrigation_datapoints(dataset: List[DatasetScheme]) -> IrrigationD
     high_dose_irrigation = daily_rain[daily_rain >= settings.HIGH_DOSE_THRESHOLD_MM]
     high_dose_irrigation_events_dates = [d.isoformat() for d in high_dose_irrigation.index]
 
-    soil_cols = [col for col in df.columns if 'soil_moisture' in col]
-    data_points_list = []
-    df_soil_data = df[soil_cols]
-    for ts in high_dose_irrigation_events_dates:
-        soil_data_row = df_soil_data.loc[ts].to_dict()
-        # Clean NaNs to None for valid JSON response
-        soil_data_cleaned = {
-            k: (None if pd.isna(v) else v)
-            for k, v in soil_data_row.items()
-        }
-        data_points_list.append({ts: soil_data_cleaned})
+
+    all_soil_cols = [
+        'soil_moisture_10', 'soil_moisture_20', 'soil_moisture_30',
+        'soil_moisture_40', 'soil_moisture_50', 'soil_moisture_60'
+    ]
+
+    available_soil_cols = [col for col in all_soil_cols if col in df.columns]
+
+    df_data_points = df[available_soil_cols].reset_index().rename(columns={'timestamp': 'date'})
+
+    df_data_points.replace({np.nan: None}, inplace=True)
+    data_records = df_data_points.to_dict('records')
+
+    data_points_list = [DataPoints(**record) for record in data_records]
 
     return IrrigationDatapoints(
         high_dose_irrigation_days=high_dose_irrigation_events_dates,
