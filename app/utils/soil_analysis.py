@@ -127,6 +127,20 @@ def detect_weighted_oversaturation(df: pd.DataFrame, weighted_fc: float) -> List
     return weighted_moisture[weighted_moisture > weighted_fc].index.tolist()
 
 
+def suggest_stress_threshold_fraction(df: pd.DataFrame, field_capacity: float) -> float:
+    if field_capacity is None or field_capacity == 0:
+        return 0.5
+
+    weighted_moisture = detect_weighted_moisture(df)
+    if weighted_moisture.empty:
+        return 0.5
+
+    driest_p05 = weighted_moisture.quantile(0.05)
+    suggested_fraction = driest_p05 / field_capacity
+    suggested_fraction = max(0.3, min(0.85, suggested_fraction))
+
+    return round(suggested_fraction + 0.02, 2)
+
 
 def calculate_soil_analysis_metrics(dataset: List[DatasetScheme]) -> DatasetAnalysis:
     df = preprocess_dataset(dataset)
@@ -147,9 +161,15 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme]) -> DatasetAnal
 
     # 3. Field capacity (weighted, based on daily rain)
     weighted_fc = calculate_field_capacity(df)
+    stress_level = 0.0
+    if weighted_fc is not None and weighted_fc > 0:
+        stress_threshold_fraction = suggest_stress_threshold_fraction(df, weighted_fc)
+        stress_level = weighted_fc * stress_threshold_fraction
+    else:
+        stress_threshold_fraction = settings.STRESS_THRESHOLD_FRACTION
+
 
     # 4. Stress and oversaturation detection
-    stress_threshold_fraction = settings.STRESS_THRESHOLD_FRACTION
     oversaturation_dates = detect_weighted_oversaturation(df, weighted_fc)
     stress_dates = detect_weighted_stress_days(df, weighted_fc, stress_threshold_fraction)
 
@@ -166,7 +186,7 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme]) -> DatasetAnal
         high_dose_irrigation_events=high_dose_irrigation_events,
         high_dose_irrigation_events_dates=high_dose_irrigation_events_dates,
         field_capacity=weighted_fc if weighted_fc is not None else 0.0,
-        stress_level=round(weighted_fc * stress_threshold_fraction, 4) if weighted_fc is not None else 0.0,
+        stress_level=round(stress_level, 4) if weighted_fc is not None else 0.0,
         number_of_saturation_days=len(distinct_saturation_dates),
         saturation_dates=distinct_saturation_dates,
         no_of_stress_days=len(distinct_stress_dates),
