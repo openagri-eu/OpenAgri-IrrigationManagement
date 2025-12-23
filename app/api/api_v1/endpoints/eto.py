@@ -70,7 +70,8 @@ def get_calculations(
         calculations = eto_response.calculations
 
         for c in calculations:
-            c.value = c.value * kc_value
+            if c.value is not None:
+                c.value = c.value * kc_value
 
     if formatting.lower() == "json":
         return eto_response
