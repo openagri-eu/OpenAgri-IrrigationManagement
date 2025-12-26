@@ -1,18 +1,18 @@
 
 import datetime
 
-from typing import List, Literal
+from typing import List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 
 from sqlalchemy.orm import Session
 
 from api import deps
-from models import User, Dataset
+from models import User, Dataset, SoilTypeValues
 from schemas import Dataset as DatasetScheme
 from schemas import WeightScheme
 from schemas import Message
-from schemas import IrrigationDatapoints
+from schemas import IrrigationDatapoints, SoilTypes
 from crud import dataset as crud_dataset
 from api.deps import get_jwt
 
@@ -124,6 +124,7 @@ def remove_dataset(
 def analyse_soil_moisture(
         dataset_id: str,
         db: Session = Depends(deps.get_db),
+        soil: Optional[SoilTypes] = None,
         formatting: Literal["JSON", "JSON-LD"] = "JSON-LD"
 ):
     dataset: list[Dataset] = crud_dataset.get_datasets(db, dataset_id)
@@ -132,7 +133,18 @@ def analyse_soil_moisture(
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
-    result = calculate_soil_analysis_metrics(dataset)
+    field_capacity = None
+    wilting_point = None
+    if soil:
+        query_row = db.query(SoilTypeValues).filter(SoilTypes.soil_type == soil.value).first()
+        if query_row is None:
+            raise HTTPException(status_code=404, detail="Soil type not found")
+
+        field_capacity = query_row.field_capacity
+        wilting_point = query_row.wilting_point
+
+
+    result = calculate_soil_analysis_metrics(dataset, field_capacity, wilting_point)
 
     if formatting == "JSON":
         return result
