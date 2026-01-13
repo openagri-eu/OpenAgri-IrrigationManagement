@@ -74,6 +74,9 @@ class DataPoints(BaseModel):
 class IrrigationDatapoints(BaseModel):
     high_dose_irrigation_days: List[datetime]
     data_points: List[DataPoints]
+    field_capacity: float
+    wilting_point: float
+    stress_level: float
 
 
 class SoilTypes(str, Enum):

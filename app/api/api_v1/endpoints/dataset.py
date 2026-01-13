@@ -155,7 +155,8 @@ def analyse_soil_moisture(
 @router.get("/{dataset_id}/irrigation-datapoints/", dependencies=[Depends(deps.get_jwt)])
 def get_irrigation_datapoints(
         dataset_id: str,
-        db: Session = Depends(deps.get_db)
+        db: Session = Depends(deps.get_db),
+        soil: Optional[SoilTypes] = None
 ):
     """
         Returns high dose irrigation datapoints for easier charts representation
@@ -166,7 +167,17 @@ def get_irrigation_datapoints(
     if not dataset:
         raise HTTPException(status_code=404, detail="Dataset not found")
 
-    result = calculate_irrigation_datapoints(dataset)
+    field_capacity = None
+    wilting_point = None
+    if soil:
+        query_row = db.query(SoilTypeValues).filter(SoilTypes.soil_type == soil.value).first()
+        if query_row is None:
+            raise HTTPException(status_code=404, detail="Soil type not found")
+
+        field_capacity = query_row.field_capacity
+        wilting_point = query_row.wilting_point
+
+    result = calculate_irrigation_datapoints(dataset, field_capacity, wilting_point)
 
     return result
 

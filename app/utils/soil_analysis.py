@@ -247,7 +247,9 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme],
     )
 
 
-def calculate_irrigation_datapoints(dataset: List[DatasetScheme]) -> IrrigationDatapoints:
+def calculate_irrigation_datapoints(dataset: List[DatasetScheme],
+                                    field_capacity: Optional[float] = None,
+                                    wilting_point: Optional[float] = None) -> IrrigationDatapoints:
     df = preprocess_dataset(dataset)
 
     daily_rain = df['rain'].resample("1D").sum()
@@ -270,7 +272,34 @@ def calculate_irrigation_datapoints(dataset: List[DatasetScheme]) -> IrrigationD
 
     data_points_list = [DataPoints(**record) for record in data_records]
 
+    calculated_fc = calculate_field_capacity(df)
+
+    weighted_fc = 0.0
+    stress_level = 0.0
+    wilting_point_val = 0.0
+    stress_threshold_fraction = settings.STRESS_THRESHOLD_FRACTION
+
+    if calculated_fc is not None:
+        weighted_fc = calculated_fc
+    elif field_capacity is not None:
+        weighted_fc = field_capacity
+
+        if weighted_fc > 0:
+            if wilting_point is not None and wilting_point > 0:
+                baseline_wp_fraction = wilting_point / weighted_fc
+            else:
+                baseline_wp_fraction = 0.5
+
+            wp_fraction = suggest_wilting_point_fraction(df, weighted_fc, baseline_wp_fraction)
+            wilting_point_val = weighted_fc * wp_fraction
+
+            stress_threshold_fraction = suggest_stress_threshold_fraction(df, weighted_fc, wp_fraction)
+            stress_level = weighted_fc * stress_threshold_fraction
+
     return IrrigationDatapoints(
         high_dose_irrigation_days=high_dose_irrigation_events_dates,
-        data_points=data_points_list
+        data_points=data_points_list,
+        field_capacity=weighted_fc if weighted_fc is not None else 0.0,
+        wilting_point=round(wilting_point_val, 4),
+        stress_level=round(stress_level, 4)
     )
