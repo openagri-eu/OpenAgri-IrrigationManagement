@@ -205,21 +205,21 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme],
     elif field_capacity is not None:
         weighted_fc = field_capacity
 
-        # 4. Stress & Wilting Point Logic
-        if weighted_fc > 0:
-            # Determine Baseline Wilting Point Fraction
-            if wilting_point is not None and wilting_point > 0:
-                baseline_wp_fraction = wilting_point / weighted_fc
-            else:
-                baseline_wp_fraction = 0.5  # Standard default
+    # 4. Stress & Wilting Point Logic
+    if weighted_fc > 0:
+        # Determine Baseline Wilting Point Fraction
+        if wilting_point is not None and wilting_point > 0:
+            baseline_wp_fraction = wilting_point / weighted_fc
+        else:
+            baseline_wp_fraction = 0.5  # Standard default
 
-            # A. Tune Wilting Point
-            wp_fraction = suggest_wilting_point_fraction(df, weighted_fc, baseline_wp_fraction)
-            wilting_point_val = weighted_fc * wp_fraction
+        # A. Tune Wilting Point
+        wp_fraction = suggest_wilting_point_fraction(df, weighted_fc, baseline_wp_fraction)
+        wilting_point_val = weighted_fc * wp_fraction
 
-            # B. Tune Stress Threshold
-            stress_threshold_fraction = suggest_stress_threshold_fraction(df, weighted_fc, wp_fraction)
-            stress_level = weighted_fc * stress_threshold_fraction
+        # B. Tune Stress Threshold
+        stress_threshold_fraction = suggest_stress_threshold_fraction(df, weighted_fc, wp_fraction)
+        stress_level = weighted_fc * stress_threshold_fraction
 
     # 5. Stress and oversaturation detection
     oversaturation_dates = detect_weighted_oversaturation(df, weighted_fc)
@@ -284,17 +284,17 @@ def calculate_irrigation_datapoints(dataset: List[DatasetScheme],
     elif field_capacity is not None:
         weighted_fc = field_capacity
 
-        if weighted_fc > 0:
-            if wilting_point is not None and wilting_point > 0:
-                baseline_wp_fraction = wilting_point / weighted_fc
-            else:
-                baseline_wp_fraction = 0.5
+    if weighted_fc > 0:
+        if wilting_point is not None and wilting_point > 0:
+            baseline_wp_fraction = wilting_point / weighted_fc
+        else:
+            baseline_wp_fraction = 0.5
 
-            wp_fraction = suggest_wilting_point_fraction(df, weighted_fc, baseline_wp_fraction)
-            wilting_point_val = weighted_fc * wp_fraction
+        wp_fraction = suggest_wilting_point_fraction(df, weighted_fc, baseline_wp_fraction)
+        wilting_point_val = weighted_fc * wp_fraction
 
-            stress_threshold_fraction = suggest_stress_threshold_fraction(df, weighted_fc, wp_fraction)
-            stress_level = weighted_fc * stress_threshold_fraction
+        stress_threshold_fraction = suggest_stress_threshold_fraction(df, weighted_fc, wp_fraction)
+        stress_level = weighted_fc * stress_threshold_fraction
 
     return IrrigationDatapoints(
         high_dose_irrigation_days=high_dose_irrigation_events_dates,
