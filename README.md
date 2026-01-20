@@ -39,21 +39,6 @@ Also, you should use a [venv](https://peps.python.org/pep-0405/) when doing this
 A list of libraries that are required for this service is present in the "requirements.txt" file.\
 This service uses FastAPI as a web framework to serve APIs, alembic for database migrations and sqlalchemy for database ORM mapping.
 
-
-<h3> Pre commit hook </h3>
-
-When working with repo after "requirements.txt" is installed \
-```shell
-pip install -r requirements.txt (inside activated venv)
-```
-run:
-```shell
-pre-commit install
-```
-
-When pre-commit enabled and installed, after every commit ruff and black formatters \
-
-
 <h3> Deploying via docker </h3>
 
 After installing <code>docker compose</code> you can run the following commands to run the application:
