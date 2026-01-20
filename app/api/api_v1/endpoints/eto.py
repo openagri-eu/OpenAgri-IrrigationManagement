@@ -1,5 +1,5 @@
 import datetime
-from typing import Literal, Optional
+from typing import Literal, Optional, List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -13,6 +13,25 @@ from models import CropKc
 from utils import jsonld_eto_response, fetch_parcel_by_id, fetch_parcel_lat_lon, TimeUnit, fetch_weather_data
 
 router = APIRouter()
+
+router.get("/crop-types/", response_model=Dict[str, List[str]], dependencies=[Depends(deps.get_jwt)])
+def get_crop_types(
+    db: Session = Depends(deps.get_db)
+):
+    """
+    Returns Crop types from DB.
+    Used to populate dropdowns in the frontend.
+    """
+
+    crops_query = db.query(CropKc.crop).all()
+    crops_list = [row[0] for row in crops_query]
+
+    stages_list = [stage.value for stage in KcStage]
+
+    return {
+        "crops": crops_list,
+        "stages": stages_list
+    }
 
 
 @router.get("/get-calculations/{location_id}/from/{from_date}/to/{to_date}/", dependencies=[Depends(get_jwt)])
