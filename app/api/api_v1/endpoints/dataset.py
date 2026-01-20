@@ -128,7 +128,7 @@ def get_soil_types(
     Returns a list of all available soil types (e.g., ['sand', 'loam', ...])
     Used to populate dropdowns in the frontend.
     """
-    
+
     soil_types = db.query(SoilTypeValues.soil_type).all()
 
     return [row[0] for row in soil_types]
