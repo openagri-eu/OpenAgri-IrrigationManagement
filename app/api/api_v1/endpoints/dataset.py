@@ -150,7 +150,7 @@ def analyse_soil_moisture(
     field_capacity = None
     wilting_point = None
     if soil:
-        query_row = db.query(SoilTypeValues).filter(SoilTypes.soil_type == soil.value).first()
+        query_row = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == soil.value).first()
         if query_row is None:
             raise HTTPException(status_code=404, detail="Soil type not found")
 
@@ -184,7 +184,7 @@ def get_irrigation_datapoints(
     field_capacity = None
     wilting_point = None
     if soil:
-        query_row = db.query(SoilTypeValues).filter(SoilTypes.soil_type == soil.value).first()
+        query_row = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == soil.value).first()
         if query_row is None:
             raise HTTPException(status_code=404, detail="Soil type not found")
 
