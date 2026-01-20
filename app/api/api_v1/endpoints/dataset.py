@@ -1,4 +1,3 @@
-
 import datetime
 
 from typing import List, Literal, Optional
@@ -119,6 +118,21 @@ def remove_dataset(
         raise HTTPException(status_code=400, detail="No dataset with given id")
 
     return Message(message="Successfully deleted")
+
+
+@router.get("/soil-types/", response_model=List[str], dependencies=[Depends(deps.get_jwt)])
+def get_soil_types(
+        db: Session = Depends(deps.get_db)
+):
+    """
+    Returns a list of all available soil types (e.g., ['sand', 'loam', ...])
+    Used to populate dropdowns in the frontend.
+    """
+    
+    soil_types = db.query(SoilTypeValues.soil_type).all()
+
+    return [row[0] for row in soil_types]
+
 
 @router.get("/{dataset_id}/analysis/", dependencies=[Depends(deps.get_jwt)])
 def analyse_soil_moisture(
