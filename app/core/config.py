@@ -23,6 +23,11 @@ SOIL_WILTING_POINTS = {
     "chalk": [0.18, 0.45]
 }
 
+INITIAL_KC = {
+    "potato": [0.5, 1.15, 0.75],
+    "sugar_beet": [0.35, 1.2, 0.7]
+}
+
 class Settings(BaseSettings):
     CORS_ORIGINS: List[AnyHttpUrl] | List[str] = None
 
