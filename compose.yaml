@@ -26,5 +26,3 @@ services:
       - ${SERVICE_PORT}:${SERVICE_PORT}
     env_file:
       - .env
-    volumes:
-      - .:/code
