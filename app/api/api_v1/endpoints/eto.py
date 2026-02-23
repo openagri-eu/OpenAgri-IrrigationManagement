@@ -260,7 +260,6 @@ def fetch_and_store_eto(
     stage: Optional[KcStage] = None,
     formatting: Literal["JSON", "JSON-LD"] = "JSON"
 ):
-
     if from_date > to_date:
         raise HTTPException(
             status_code=400,
@@ -275,12 +274,14 @@ def fetch_and_store_eto(
         to_date=to_date,
         db=db,
         crop=crop,
-        stage=stage)
+        stage=stage
+    )
 
     if response_json is None:
-        raise HTTPException(status_code=400, detail=f"Failed to fetch data from Open-Meteo")
-
-
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to fetch data from Open-Meteo or save to the database."
+        )
 
     if formatting.lower() == "json":
         return response_json
