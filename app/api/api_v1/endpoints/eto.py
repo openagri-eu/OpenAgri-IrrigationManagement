@@ -1,4 +1,5 @@
 import datetime
+
 from typing import Literal, Optional, List, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,7 +11,7 @@ from api.deps import get_jwt
 
 from schemas import EToResponse, Calculation, Crop, KcStage
 from models import CropKc
-from utils import jsonld_eto_response, fetch_parcel_by_id, fetch_parcel_lat_lon, TimeUnit, fetch_weather_data
+from utils import jsonld_eto_response, fetch_parcel_by_id, fetch_parcel_lat_lon, TimeUnit, fetch_weather_data, fetch_historical_eto_for_location
 
 router = APIRouter()
 
@@ -245,3 +246,43 @@ def calculate_eto_by_coordinates(
         return response_obj
     else:
         return jsonld_eto_response(response_obj)
+
+
+@router.get("/fetch-and-store-eto/", dependencies=[Depends(get_jwt)])
+def fetch_and_store_eto(
+    location_id: int,
+    latitude: float,
+    longitude: float,
+    from_date: datetime.date,
+    to_date: datetime.date,
+    db: Session = Depends(deps.get_db),
+    crop: Optional[Crop] = None,
+    stage: Optional[KcStage] = None,
+    formatting: Literal["JSON", "JSON-LD"] = "JSON"
+):
+
+    if from_date > to_date:
+        raise HTTPException(
+            status_code=400,
+            detail=f"from_date must be later than to_date, from_date: {from_date} | to_date: {to_date}"
+        )
+
+    response_json = fetch_historical_eto_for_location(
+        location_id=location_id,
+        latitude=latitude,
+        longitude=longitude,
+        from_date=from_date,
+        to_date=to_date,
+        db=db,
+        crop=crop,
+        stage=stage)
+
+    if response_json is None:
+        raise HTTPException(status_code=400, detail=f"Failed to fetch data from Open-Meteo")
+
+
+
+    if formatting.lower() == "json":
+        return response_json
+    else:
+        return jsonld_eto_response(response_json)
