@@ -184,8 +184,14 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme],
     daily_rain = df['rain'].resample("1D").sum()
 
     # 2. Irrigation/precipitation events (daily totals)
-    irrigation_events_detected = (daily_rain[(daily_rain > 0) & (daily_rain < settings.LOW_DOSE_THRESHOLD_MM)]).count()
-    precipitation_events = (daily_rain[daily_rain > 0]).count()
+    irrigation_series = daily_rain[(daily_rain > 0) & (daily_rain < settings.LOW_DOSE_THRESHOLD_MM)]
+    irrigation_events_detected = irrigation_series.count()
+    irrigation_events_dates = [d.isoformat() for d in irrigation_series.index]
+
+    precipitation_series = daily_rain[daily_rain > 0]
+    precipitation_events = precipitation_series.count()
+    precipitation_events_dates = [d.isoformat() for d in precipitation_series.index]
+
     high_dose_irrigation = daily_rain[daily_rain >= settings.HIGH_DOSE_THRESHOLD_MM]
 
     high_dose_irrigation_events = high_dose_irrigation.count()
@@ -234,7 +240,9 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme],
         dataset_id=getattr(dataset[0], "dataset_id", "unknown") if dataset else "unknown",
         time_period=[start_date, end_date],
         irrigation_events_detected=irrigation_events_detected,
+        irrigation_events_dates=irrigation_events_dates,
         precipitation_events=precipitation_events,
+        precipitation_events_dates=precipitation_events_dates,
         high_dose_irrigation_events=high_dose_irrigation_events,
         high_dose_irrigation_events_dates=high_dose_irrigation_events_dates,
         field_capacity=weighted_fc if weighted_fc is not None else 0.0,
