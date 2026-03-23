@@ -3,7 +3,7 @@ alembic==1.13.1 # DB migrations
 requests==2.32.3 # Readable HTTP
 psycopg2==2.9.9 # PSQL driver
 pydantic-settings==2.2.1 # Pydantic settings options [donated to the python-org, not part of the main package anymore]
-PyJWT==2.8.0 # Instead of jose (has a CVE)
+PyJWT==2.12.1 # Instead of jose (has a CVE)
 ETo==1.1.0
 APScheduler==3.10.4
 password-validator==1.0 # Enforceable rules for passwords
