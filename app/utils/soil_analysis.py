@@ -15,9 +15,15 @@ def preprocess_dataset(data: List[DatasetScheme]) -> pd.DataFrame:
     """Standard preprocessing: convert to DataFrame, set timestamp index, fill missing rain."""
     data_dict = [item.model_dump() for item in data]
     df = pd.DataFrame(data_dict)
+
     df.rename(columns={'date': 'timestamp'}, inplace=True)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df.set_index('timestamp', inplace=True)
+    
+    df.sort_index(inplace=True)
+
+    df = df[~df.index.duplicated(keep='last')]
+
     df['rain'] = df['rain'].fillna(0)
     return df
 
