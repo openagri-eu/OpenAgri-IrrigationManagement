@@ -56,45 +56,60 @@ def calculate_field_capacity(
     for col in soil_moisture_cols.values():
         df[col] = df[col].ffill().bfill()
 
-    # --- Aggregate rain to daily totals ---
-    daily_rain = df['rain'].resample("1D").sum()
-    major_rain_days = daily_rain[daily_rain >= rain_threshold_mm].index
+    temp_df = df[['rain']].copy()
+    temp_df['is_raining'] = temp_df['rain'] > rain_zero_tolerance
 
+    time_diff = temp_df.index.to_series().diff().dt.total_seconds().div(3600)
 
-    if len(major_rain_days) == 0:
-        return None
+    temp_df['rain_break'] = (
+            (~temp_df['is_raining']) &
+            (time_diff > settings.RAIN_GAP_TOLERANCE_HOURS)
+    )
+
+    temp_df['rain_group'] = (temp_df['is_raining'] != temp_df['is_raining'].shift()).cumsum()
+
+    rain_events = temp_df[temp_df['is_raining']].groupby('rain_group')
 
     field_capacity_candidates = {col: [] for col in soil_moisture_cols.values()}
 
-    # --- For each rain day, find post-rain window and max moisture ---
-    for rain_day in major_rain_days:
-        # End of rain = first dry hour after rain day
-        day_slice = df.loc[rain_day: rain_day + pd.Timedelta("1D")]
-        end_of_rain_candidates = day_slice[day_slice['rain'] < rain_zero_tolerance].index
-        if len(end_of_rain_candidates) > 0:
-            end_of_rain = end_of_rain_candidates[0]
-        elif not day_slice.empty:
-            end_of_rain = day_slice.index[-1]
-        else:
-            continue  # skip this event if no data
+    for _, event in rain_events:
 
-        # Look forward a window of hours after end of rain
-        search_period = df.loc[end_of_rain: end_of_rain + pd.Timedelta(hours=time_window_hours)]
+        total_rain = event['rain'].sum()
+
+        if total_rain < rain_threshold_mm:
+            continue
+
+        end_of_rain = event.index[-1]
+
+        search_period = df.loc[
+            end_of_rain: end_of_rain + pd.Timedelta(hours=time_window_hours)
+        ]
+
+        if search_period.empty:
+            continue
 
         for col in soil_moisture_cols.values():
-            if not search_period.empty and not search_period[col].isnull().all():
+            if not search_period[col].isnull().all():
                 fc_candidate = search_period[col].max()
                 field_capacity_candidates[col].append(fc_candidate)
 
-    # --- Median across candidates, convert to fraction ---
+
+    if not any(field_capacity_candidates.values()):
+        return None
+
+    # --- Aggregate results ---
     final_field_capacity = {
         depth: (float(np.median(field_capacity_candidates[col])) / 100)
         if len(field_capacity_candidates[col]) > 0 else None
         for depth, col in soil_moisture_cols.items()
     }
 
-    # Weighted average flattening
-    fc_list = [(depth, float(val)) for depth, val in final_field_capacity.items() if val is not None]
+    fc_list = [
+        (depth, float(val))
+        for depth, val in final_field_capacity.items()
+        if val is not None
+    ]
+
     return weighted_average(fc_list, settings.GLOBAL_WEIGHTS)
 
 
