@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     LOW_DOSE_THRESHOLD_MM: float = 5.0
     HIGH_DOSE_THRESHOLD_MM: float = 20.0
     RAIN_ZERO_TOLERANCE: float = 0.1
-    RAIN_GAP_TOLERANCE_HOURS = 3
+    RAIN_GAP_TOLERANCE_HOURS: int = 3
 
     # Weights
     GLOBAL_WEIGHTS: dict[int, float] = {
