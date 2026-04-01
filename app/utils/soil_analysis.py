@@ -11,6 +11,15 @@ import pandas as pd
 import numpy as np
 
 
+def decode_tipping_bucket_rain(rain_series: pd.Series) -> pd.Series:
+    """
+    Convert a cumulative tipping-bucket counter into per-interval increments.
+    """
+    increments = rain_series.diff().clip(lower=0)
+    increments.iloc[0] = 0
+    return increments
+
+
 def preprocess_dataset(data: List[DatasetScheme]) -> pd.DataFrame:
     """Standard preprocessing: convert to DataFrame, set timestamp index, fill missing rain."""
     data_dict = [item.model_dump() for item in data]
@@ -25,6 +34,8 @@ def preprocess_dataset(data: List[DatasetScheme]) -> pd.DataFrame:
     df = df[~df.index.duplicated(keep='last')]
 
     df['rain'] = df['rain'].fillna(0)
+
+    df['rain'] = decode_tipping_bucket_rain(df['rain'])
     return df
 
 
@@ -39,6 +50,20 @@ def weighted_average(values: List[Tuple[int, float]], weights: Dict[int, float])
     return round(total / weight_sum, 4) if weight_sum else None
 
 
+def _log_active_depths(df: pd.DataFrame) -> None:
+    """
+    Log which soil moisture depths have actual data vs all-NaN columns
+    """
+    sm_cols = [c for c in df.columns if 'soil_moisture' in c]
+    active = [c for c in sm_cols if df[c].notna().any()]
+    missing = [c for c in sm_cols if not df[c].notna().any()]
+
+    print(f"Active soil moisture depths : {active}")
+
+    if missing:
+        print(f"Depths with no data (all NaN: {missing} - skipped in all calculations)")
+
+
 
 def calculate_field_capacity(
     df: pd.DataFrame,
@@ -50,7 +75,7 @@ def calculate_field_capacity(
 
     # --- Identify soil moisture columns ---
     soil_moisture_cols = {int(col.split('_')[2]): col for col in df.columns if 'soil_moisture' in col}
-    print("Detected soil moisture columns:", soil_moisture_cols)
+    _log_active_depths(df)
 
     # Fill missing values
     for col in soil_moisture_cols.values():
@@ -70,7 +95,7 @@ def calculate_field_capacity(
 
     rain_events = temp_df[temp_df['is_raining']].groupby('rain_group')
 
-    field_capacity_candidates = {col: [] for col in soil_moisture_cols.values()}
+    field_capacity_candidates: Dict[str, List[float]] = {col: [] for col in soil_moisture_cols.values()}
 
     for _, event in rain_events:
 
@@ -89,18 +114,23 @@ def calculate_field_capacity(
             continue
 
         for col in soil_moisture_cols.values():
-            if not search_period[col].isnull().all():
-                fc_candidate = search_period[col].max()
-                field_capacity_candidates[col].append(fc_candidate)
+            series = search_period[col].dropna()
+            if not series.empty:
+                field_capacity_candidates[col].append(float(series.max()))
+
 
 
     if not any(field_capacity_candidates.values()):
+        print(
+            "WARNING: No qualifying rain events found for field capacity calculations. "
+            "Consider lowering RAIN_THRESHOLOD_MM."
+        )
         return None
 
     # --- Aggregate results ---
     final_field_capacity = {
         depth: (float(np.median(field_capacity_candidates[col])) / 100)
-        if len(field_capacity_candidates[col]) > 0 else None
+        if field_capacity_candidates[col] else None
         for depth, col in soil_moisture_cols.items()
     }
 
@@ -115,7 +145,12 @@ def calculate_field_capacity(
 
 def detect_weighted_moisture(df: pd.DataFrame) -> pd.Series:
     """Compute vectorized weighted soil moisture across all timestamps."""
-    valid_depths = [depth for depth in settings.GLOBAL_WEIGHTS if f"soil_moisture_{depth}" in df.columns]
+    valid_depths = [
+        depth for depth in settings.GLOBAL_WEIGHTS
+        if f"soil_moisture_{depth}" in df.columns
+           and df[f"soil_moisture_{depth}"].notna().any()
+    ]
+
     if not valid_depths:
         return pd.Series([], dtype=float)
 
@@ -205,7 +240,9 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme],
     daily_rain = df['rain'].resample("1D").sum()
 
     # 2. Irrigation/precipitation events (daily totals)
-    irrigation_series = daily_rain[(daily_rain > 0) & (daily_rain < settings.LOW_DOSE_THRESHOLD_MM)]
+    irrigation_series = daily_rain[
+        (daily_rain > 0) & (daily_rain < settings.LOW_DOSE_THRESHOLD_MM)
+        ]
     irrigation_events_detected = irrigation_series.count()
     irrigation_events_dates = [d.isoformat() for d in irrigation_series.index]
 
@@ -214,7 +251,6 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme],
     precipitation_events_dates = [d.isoformat() for d in precipitation_series.index]
 
     high_dose_irrigation = daily_rain[daily_rain >= settings.HIGH_DOSE_THRESHOLD_MM]
-
     high_dose_irrigation_events = high_dose_irrigation.count()
     high_dose_irrigation_events_dates = [d.isoformat() for d in high_dose_irrigation.index]
 
@@ -253,9 +289,8 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme],
     stress_dates = detect_weighted_stress_days(df, weighted_fc, stress_threshold_fraction)
 
     # Use sets to ensure distinct dates before sorting
-    distinct_saturation_dates = sorted({d.date().isoformat() for d in oversaturation_dates})
-    distinct_stress_dates = sorted({d.date().isoformat() for d in stress_dates})
-
+    distinct_saturation_dates = sorted({datetime(d.year, d.month, d.day) for d in oversaturation_dates})
+    distinct_stress_dates = sorted({datetime(d.year, d.month, d.day) for d in stress_dates})
     # 6. Format results
     return DatasetAnalysis(
         dataset_id=getattr(dataset[0], "dataset_id", "unknown") if dataset else "unknown",

@@ -70,11 +70,11 @@ class Settings(BaseSettings):
     JWT_KEY: str
 
     # Thresholds:
-    RAIN_THRESHOLD_MM: float = 15
+    RAIN_THRESHOLD_MM: float = 5
     FIELD_CAPACITY_WINDOW_HOURS: int = 24
     STRESS_THRESHOLD_FRACTION: float = 0.5
     LOW_DOSE_THRESHOLD_MM: float = 5.0
-    HIGH_DOSE_THRESHOLD_MM: float = 20.0
+    HIGH_DOSE_THRESHOLD_MM: float = 15.0
     RAIN_ZERO_TOLERANCE: float = 0.1
     RAIN_GAP_TOLERANCE_HOURS: int = 3
 
