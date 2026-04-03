@@ -7,8 +7,46 @@ from datetime import datetime
 
 from core import settings
 
+from typing import cast
+
 import pandas as pd
 import numpy as np
+
+import re
+
+_SM_PATTERN = re.compile(r'(?i)soil.?moisture.?(\d+)', re.IGNORECASE)
+
+
+def _extract_sm_cols(df: pd.DataFrame) -> Dict[int, str]:
+    """
+    Return {depth_int: column_name} for every soil moisture column in df,
+    regardless of the naming convention used by model_dump().
+
+    Matches all of: soil_moisture_10, soilMoisture10, Soil_Moisture_10,
+                    soil_moisture_10cm, Soil Moisture 10cm (%), ...
+    """
+    result = {}
+    for col in df.columns:
+        m = _SM_PATTERN.search(str(col))
+        if m:
+            result[int(m.group(1))] = col
+    return result
+
+
+def _is_cumulative_rain(rain_series: pd.Series,
+                        cumulative_threshold: float = 0.90) -> bool:
+    """
+    Auto-detect whether the rain column is a cumulative tipping-bucket counter.
+
+    A cumulative counter broadcasts the same value repeatedly between tips.
+    If >= `cumulative_threshold` fraction of non-zero readings have diff == 0
+    the series is considered cumulative.
+    """
+    nonzero = rain_series[rain_series > 0]
+    if nonzero.empty:
+        return False
+    zero_diffs = (rain_series.diff()[rain_series > 0] == 0).sum()
+    return (zero_diffs / len(nonzero)) >= cumulative_threshold
 
 
 def decode_tipping_bucket_rain(rain_series: pd.Series) -> pd.Series:
@@ -28,41 +66,39 @@ def preprocess_dataset(data: List[DatasetScheme]) -> pd.DataFrame:
     df.rename(columns={'date': 'timestamp'}, inplace=True)
     df['timestamp'] = pd.to_datetime(df['timestamp'])
     df.set_index('timestamp', inplace=True)
-    
-    df.sort_index(inplace=True)
 
+    df.sort_index(inplace=True)
     df = df[~df.index.duplicated(keep='last')]
 
     df['rain'] = df['rain'].fillna(0)
 
-    df['rain'] = decode_tipping_bucket_rain(df['rain'])
+    if _is_cumulative_rain(df['rain']):
+        print("Rain column detected as cumulative tipping-bucket — decoding to increments.")
+        df['rain'] = decode_tipping_bucket_rain(df['rain'])
+    else:
+        print("Rain column detected as per-interval increments — no decoding needed.")
+
     return df
 
 
-
-def weighted_average(values: List[Tuple[int, float]], weights: Dict[int, float]) -> float | None:
-    """Compute weighted average across depths given [[depth, value], ...]."""
+def weighted_average(values: List[Tuple[int, float]], weights: Dict[int, float]) -> Optional[float]:
+    """
+    Compute weighted average across depths given [(depth, value), ...].
+    """
     total, weight_sum = 0.0, 0.0
     for depth, val in values:
-        if depth in weights and val is not None:
+        if depth in weights and val is not None and pd.notna(val):
             total += weights[depth] * val
             weight_sum += weights[depth]
     return round(total / weight_sum, 4) if weight_sum else None
 
 
-def _log_active_depths(df: pd.DataFrame) -> None:
-    """
-    Log which soil moisture depths have actual data vs all-NaN columns
-    """
-    sm_cols = [c for c in df.columns if 'soil_moisture' in c]
-    active = [c for c in sm_cols if df[c].notna().any()]
-    missing = [c for c in sm_cols if not df[c].notna().any()]
-
+def _log_active_depths(sm_cols: Dict[int, str], df: pd.DataFrame) -> None:
+    active = [col for col in sm_cols.values() if df[col].notna().any()]
+    missing = [col for col in sm_cols.values() if not df[col].notna().any()]
     print(f"Active soil moisture depths : {active}")
-
     if missing:
-        print(f"Depths with no data (all NaN: {missing} - skipped in all calculations)")
-
+        print(f"Depths with no data (all NaN): {missing} - excluded from calculations")
 
 
 def calculate_field_capacity(
@@ -73,71 +109,59 @@ def calculate_field_capacity(
 ) -> Union[float, None]:
     """Calculates weighted field capacity using daily rain totals."""
 
-    # --- Identify soil moisture columns ---
-    soil_moisture_cols = {int(col.split('_')[2]): col for col in df.columns if 'soil_moisture' in col}
-    _log_active_depths(df)
+    sm_cols = _extract_sm_cols(df)
+    if not sm_cols:
+        print("WARNING: No soil moisture columns detected. Check schema field names.")
+        return None
 
-    # Fill missing values
-    for col in soil_moisture_cols.values():
+    _log_active_depths(sm_cols, df)
+
+    # Fill within-depth gaps; all-NaN columns remain all-NaN (skipped later)
+    for col in sm_cols.values():
         df[col] = df[col].ffill().bfill()
 
     temp_df = df[['rain']].copy()
     temp_df['is_raining'] = temp_df['rain'] > rain_zero_tolerance
-
-    time_diff = temp_df.index.to_series().diff().dt.total_seconds().div(3600)
-
-    temp_df['rain_break'] = (
-            (~temp_df['is_raining']) &
-            (time_diff > settings.RAIN_GAP_TOLERANCE_HOURS)
-    )
-
     temp_df['rain_group'] = (temp_df['is_raining'] != temp_df['is_raining'].shift()).cumsum()
 
     rain_events = temp_df[temp_df['is_raining']].groupby('rain_group')
 
-    field_capacity_candidates: Dict[str, List[float]] = {col: [] for col in soil_moisture_cols.values()}
+    field_capacity_candidates: Dict[str, List[float]] = {col: [] for col in sm_cols.values()}
 
     for _, event in rain_events:
-
         total_rain = event['rain'].sum()
-
         if total_rain < rain_threshold_mm:
             continue
 
         end_of_rain = event.index[-1]
-
-        search_period = df.loc[
-            end_of_rain: end_of_rain + pd.Timedelta(hours=time_window_hours)
-        ]
+        search_period = df.loc[end_of_rain: end_of_rain + pd.Timedelta(hours=time_window_hours)]
 
         if search_period.empty:
             continue
 
-        for col in soil_moisture_cols.values():
-            series = search_period[col].dropna()
-            if not series.empty:
-                field_capacity_candidates[col].append(float(series.max()))
-
-
+        for col in sm_cols.values():
+            # dropna() ensures NaN from all-NaN columns never enters candidates
+            valid = search_period[col].dropna()
+            if not valid.empty:
+                field_capacity_candidates[col].append(float(valid.max()))
 
     if not any(field_capacity_candidates.values()):
         print(
-            "WARNING: No qualifying rain events found for field capacity calculations. "
-            "Consider lowering RAIN_THRESHOLOD_MM."
+            "WARNING: No qualifying rain events found for field capacity calculation. "
+            f"Current RAIN_THRESHOLD_MM={rain_threshold_mm}. Consider lowering it."
         )
         return None
 
-    # --- Aggregate results ---
     final_field_capacity = {
         depth: (float(np.median(field_capacity_candidates[col])) / 100)
         if field_capacity_candidates[col] else None
-        for depth, col in soil_moisture_cols.items()
+        for depth, col in sm_cols.items()
     }
 
     fc_list = [
-        (depth, float(val))
+        (depth, cast(float, val))
         for depth, val in final_field_capacity.items()
-        if val is not None
+        if val is not None and pd.notna(val)
     ]
 
     return weighted_average(fc_list, settings.GLOBAL_WEIGHTS)
@@ -145,29 +169,27 @@ def calculate_field_capacity(
 
 def detect_weighted_moisture(df: pd.DataFrame) -> pd.Series:
     """Compute vectorized weighted soil moisture across all timestamps."""
+    sm_cols = _extract_sm_cols(df)
     valid_depths = [
-        depth for depth in settings.GLOBAL_WEIGHTS
-        if f"soil_moisture_{depth}" in df.columns
-           and df[f"soil_moisture_{depth}"].notna().any()
+        depth for depth, col in sm_cols.items()
+        if depth in settings.GLOBAL_WEIGHTS and df[col].notna().any()
     ]
-
     if not valid_depths:
         return pd.Series([], dtype=float)
 
     weights = np.array([settings.GLOBAL_WEIGHTS[d] for d in valid_depths])
-    soil_cols = [f"soil_moisture_{d}" for d in valid_depths]
+    soil_cols = [sm_cols[d] for d in valid_depths]
 
-    # Normalize soil moisture to fraction
     moisture_values = df[soil_cols].div(100)
     weighted_sum = moisture_values.mul(weights, axis=1).sum(axis=1)
-    weighted_avg = weighted_sum / weights.sum()
+    weighted_avg = weighted_sum / weights.sum()  # normalize to present depths only
     return weighted_avg
 
 
 def detect_weighted_stress_days(df: pd.DataFrame, weighted_fc: float,
                                 stress_threshold_fraction=settings.STRESS_THRESHOLD_FRACTION) -> List[datetime]:
     """Vectorized detection of stress days."""
-    if weighted_fc is None:
+    if not weighted_fc:
         return []
     weighted_moisture = detect_weighted_moisture(df)
     stress_threshold = weighted_fc * stress_threshold_fraction
@@ -176,7 +198,7 @@ def detect_weighted_stress_days(df: pd.DataFrame, weighted_fc: float,
 
 def detect_weighted_oversaturation(df: pd.DataFrame, weighted_fc: float) -> List[datetime]:
     """Vectorized detection of oversaturation days."""
-    if weighted_fc is None:
+    if not weighted_fc:
         return []
     weighted_moisture = detect_weighted_moisture(df)
     return weighted_moisture[weighted_moisture > weighted_fc].index.tolist()
@@ -185,7 +207,6 @@ def detect_weighted_oversaturation(df: pd.DataFrame, weighted_fc: float) -> List
 def suggest_wilting_point_fraction(df: pd.DataFrame,
                                    field_capacity: float,
                                    baseline_wp_fraction: float = 0.5) -> float:
-
     if field_capacity is None or field_capacity == 0:
         return baseline_wp_fraction
 
@@ -194,7 +215,6 @@ def suggest_wilting_point_fraction(df: pd.DataFrame,
         return baseline_wp_fraction
 
     historical_min = weighted_moisture.quantile(0.01)
-
     observed_min_fraction = historical_min / field_capacity
 
     if observed_min_fraction < baseline_wp_fraction:
@@ -207,10 +227,7 @@ def suggest_wilting_point_fraction(df: pd.DataFrame,
 def suggest_stress_threshold_fraction(df: pd.DataFrame,
                                       field_capacity: float,
                                       wilting_point_fraction: float) -> float:
-    """
-    Auto-tunes the stress threshold.
-    Ensures the suggestion is always HIGHER than the Wilting Point.
-    """
+    """Auto-tune stress threshold, always strictly above the wilting point."""
     if field_capacity is None or field_capacity == 0:
         return 0.5
 
@@ -222,7 +239,6 @@ def suggest_stress_threshold_fraction(df: pd.DataFrame,
     suggested_fraction = driest_p05 / field_capacity
 
     min_safe_fraction = wilting_point_fraction + 0.05
-
     suggested_fraction = max(min_safe_fraction, min(0.85, suggested_fraction))
 
     return round(suggested_fraction + 0.02, 2)
@@ -233,13 +249,11 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme],
                                     wilting_point: Optional[float] = None) -> DatasetAnalysis:
     df = preprocess_dataset(dataset)
 
-    # 1. Time period
-    start_date, end_date = df.index.min().isoformat(), df.index.max().isoformat()
+    start_date = df.index.min().isoformat()
+    end_date = df.index.max().isoformat()
 
-    # --- Resample rain to daily totals ---
     daily_rain = df['rain'].resample("1D").sum()
 
-    # 2. Irrigation/precipitation events (daily totals)
     irrigation_series = daily_rain[
         (daily_rain > 0) & (daily_rain < settings.LOW_DOSE_THRESHOLD_MM)
         ]
@@ -254,7 +268,6 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme],
     high_dose_irrigation_events = high_dose_irrigation.count()
     high_dose_irrigation_events_dates = [d.isoformat() for d in high_dose_irrigation.index]
 
-    # 3. Field capacity (weighted, based on daily rain)
     calculated_fc = calculate_field_capacity(df)
 
     weighted_fc = 0.0
@@ -262,36 +275,33 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme],
     wilting_point_val = 0.0
     stress_threshold_fraction = settings.STRESS_THRESHOLD_FRACTION
 
-    # Logic: Use calculated if available (it's real data), otherwise fall back to DB default, then 0.0
     if calculated_fc is not None:
         weighted_fc = calculated_fc
     elif field_capacity is not None:
         weighted_fc = field_capacity
 
-    # 4. Stress & Wilting Point Logic
     if weighted_fc > 0:
-        # Determine Baseline Wilting Point Fraction
         if wilting_point is not None and wilting_point > 0:
             baseline_wp_fraction = wilting_point / weighted_fc
         else:
-            baseline_wp_fraction = 0.5  # Standard default
+            baseline_wp_fraction = 0.5
 
-        # A. Tune Wilting Point
         wp_fraction = suggest_wilting_point_fraction(df, weighted_fc, baseline_wp_fraction)
         wilting_point_val = weighted_fc * wp_fraction
 
-        # B. Tune Stress Threshold
         stress_threshold_fraction = suggest_stress_threshold_fraction(df, weighted_fc, wp_fraction)
         stress_level = weighted_fc * stress_threshold_fraction
 
-    # 5. Stress and oversaturation detection
     oversaturation_dates = detect_weighted_oversaturation(df, weighted_fc)
     stress_dates = detect_weighted_stress_days(df, weighted_fc, stress_threshold_fraction)
 
-    # Use sets to ensure distinct dates before sorting
-    distinct_saturation_dates = sorted({datetime(d.year, d.month, d.day) for d in oversaturation_dates})
-    distinct_stress_dates = sorted({datetime(d.year, d.month, d.day) for d in stress_dates})
-    # 6. Format results
+    distinct_saturation_dates = sorted({
+        datetime(d.year, d.month, d.day) for d in oversaturation_dates
+    })
+    distinct_stress_dates = sorted({
+        datetime(d.year, d.month, d.day) for d in stress_dates
+    })
+
     return DatasetAnalysis(
         dataset_id=getattr(dataset[0], "dataset_id", "unknown") if dataset else "unknown",
         time_period=[start_date, end_date],
