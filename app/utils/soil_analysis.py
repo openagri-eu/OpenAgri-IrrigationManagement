@@ -16,6 +16,7 @@ import re
 
 _SM_PATTERN = re.compile(r'(?i)soil.?moisture.?(\d+)', re.IGNORECASE)
 
+_NUMBERED_DEPTH_MAP = {1: 10, 2: 30, 3: 40, 4: 50, 5: 20, 6: 60}
 
 def _extract_sm_cols(df: pd.DataFrame) -> Dict[int, str]:
     """
@@ -29,8 +30,22 @@ def _extract_sm_cols(df: pd.DataFrame) -> Dict[int, str]:
     for col in df.columns:
         m = _SM_PATTERN.search(str(col))
         if m:
-            result[int(m.group(1))] = col
+            raw_num = int(m.group(1))
+            if raw_num in _NUMBERED_DEPTH_MAP and raw_num <= 6:
+                depth = _NUMBERED_DEPTH_MAP[raw_num]
+            else:
+                depth = raw_num
+            result[depth] = col
+
     return result
+
+
+def _replace_zero_sm_with_nan(df: pd.DataFrame) -> pd.DataFrame:
+    sm_cols = _extract_sm_cols(df)
+    for col in sm_cols.values():
+        df[col] = df[col].replace(0.0, np.nan)
+
+    return df
 
 
 def _is_cumulative_rain(rain_series: pd.Series,
@@ -69,6 +84,8 @@ def preprocess_dataset(data: List[DatasetScheme]) -> pd.DataFrame:
 
     df.sort_index(inplace=True)
     df = df[~df.index.duplicated(keep='last')]
+
+    df = _replace_zero_sm_with_nan(df)
 
     df['rain'] = df['rain'].fillna(0)
 
@@ -158,7 +175,7 @@ def calculate_field_capacity(
         for depth, col in sm_cols.items()
     }
 
-    fc_list = [
+    fc_list: List[Tuple[int, float]] = [
         (depth, cast(float, val))
         for depth, val in final_field_capacity.items()
         if val is not None and pd.notna(val)
@@ -184,6 +201,33 @@ def detect_weighted_moisture(df: pd.DataFrame) -> pd.Series:
     weighted_sum = moisture_values.mul(weights, axis=1).sum(axis=1)
     weighted_avg = weighted_sum / weights.sum()  # normalize to present depths only
     return weighted_avg
+
+
+def detect_irrigation_from_sm_resposne(
+        df: pd.DataFrame,
+        daily_rain: pd.Series,
+        high_dose_threshold_mm: float,
+        sm_jump_pct: float = settings.SM_IRRIGATION_JUMP_PCT,
+        gauge_blackout_days: int = settings.GLOBAL_GAUGE_BLACKOUT_DAYS,
+) -> pd.Series:
+
+    weighted_moisture = detect_weighted_moisture(df)
+    if weighted_moisture.empty:
+        return pd.Series(dtype=float)
+
+    daily_sm = (weighted_moisture * 100).resample('1D').mean()
+    daily_sm_rise = daily_sm.diff()
+
+    sm_jump_days = daily_sm_rise[daily_sm_rise >= sm_jump_pct].index
+
+    gauge_high_days = daily_rain[daily_rain >= high_dose_threshold_mm].index
+    blackout: set = set()
+    for d in gauge_high_days:
+        for offset in range(gauge_blackout_days + 1):
+            blackout.add((d + pd.Timedelta(days=offset)).normalize())
+
+    missed_days = sm_jump_days[~sm_jump_days.isin(blackout)]
+    return daily_sm_rise.loc[missed_days]
 
 
 def detect_weighted_stress_days(df: pd.DataFrame, weighted_fc: float,
@@ -264,9 +308,19 @@ def calculate_soil_analysis_metrics(dataset: List[DatasetScheme],
     precipitation_events = precipitation_series.count()
     precipitation_events_dates = [d.isoformat() for d in precipitation_series.index]
 
-    high_dose_irrigation = daily_rain[daily_rain >= settings.HIGH_DOSE_THRESHOLD_MM]
-    high_dose_irrigation_events = high_dose_irrigation.count()
-    high_dose_irrigation_events_dates = [d.isoformat() for d in high_dose_irrigation.index]
+    gauge_high_dose = daily_rain[daily_rain >= settings.HIGH_DOSE_THRESHOLD_MM]
+    sm_detected = detect_irrigation_from_sm_resposne(
+        df,
+        daily_rain,
+        high_dose_threshold_mm=settings.HIGH_DOSE_THRESHOLD_MM,
+        sm_jump_pct=settings.SM_IRRIGATION_JUMP_PCT,
+        gauge_blackout_days=settings.SM_GAUGE_BLACKOUT_DAYS
+    )
+
+    all_high_dose_dates = sorted(gauge_high_dose.index.union(sm_detected.index))
+    high_dose_irrigation_events = len(all_high_dose_dates)
+    high_dose_irrigation_events_dates = [d.isoformat() for d in all_high_dose_dates]
+
 
     calculated_fc = calculate_field_capacity(df)
 
@@ -328,9 +382,17 @@ def calculate_irrigation_datapoints(dataset: List[DatasetScheme],
 
     daily_rain = df['rain'].resample("1D").sum()
 
-    high_dose_irrigation = daily_rain[daily_rain >= settings.HIGH_DOSE_THRESHOLD_MM]
-    high_dose_irrigation_events_dates = [d.isoformat() for d in high_dose_irrigation.index]
+    gauge_high_dose = daily_rain[daily_rain >= settings.HIGH_DOSE_THRESHOLD_MM]
+    sm_detected = detect_irrigation_from_sm_resposne(
+        df,
+        daily_rain,
+        high_dose_threshold_mm=settings.HIGH_DOSE_THRESHOLD_MM,
+        sm_jump_pct=settings.SM_IRRIGATION_JUMP_PCT,
+        gauge_blackout_days=settings.SM_GAUGE_BLACKOUT_DAYS
+    )
 
+    all_high_dose_dates = sorted(gauge_high_dose.index.union(sm_detected.index))
+    high_dose_irrigation_events_dates = [d.isoformat() for d in all_high_dose_dates]
 
     all_soil_cols = [
         'soil_moisture_10', 'soil_moisture_20', 'soil_moisture_30',
