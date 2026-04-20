@@ -208,7 +208,7 @@ def detect_irrigation_from_sm_resposne(
         daily_rain: pd.Series,
         high_dose_threshold_mm: float,
         sm_jump_pct: float = settings.SM_IRRIGATION_JUMP_PCT,
-        gauge_blackout_days: int = settings.GLOBAL_GAUGE_BLACKOUT_DAYS,
+        gauge_blackout_days: int = settings.SM_GAUGE_BLACKOUT_DAYS,
 ) -> pd.Series:
 
     weighted_moisture = detect_weighted_moisture(df)
