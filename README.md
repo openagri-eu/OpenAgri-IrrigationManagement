@@ -177,5 +177,5 @@ Irrigation Management Service is part of OpenAgri project. Your contribution hel
 
 # License
 
-This project code is licensed under the EUPL 1.2 license, see the [LICENSE](https://github.com/agstack/OpenAgri-IrrigationManagement/blob/main/LICENSE) file for more details.
+This project code is licensed under the Apache License 2.0, see the [LICENSE](LICENSE) file for more details.
 Please note that each service may have different licenses, which can be found their specific source code repository.
