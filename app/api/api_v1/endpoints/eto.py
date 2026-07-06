@@ -35,7 +35,7 @@ def get_crop_types(
     }
 
 
-@router.post("/crop-types/", response_model=CropKcScheme, status_code=201, dependencies=[Depends(deps.get_jwt)])
+@router.post("/crop-types/", response_model=CropKcScheme, dependencies=[Depends(deps.get_jwt)])
 def create_crop_type(
         crop_in: CropCreate,
         db: Session = Depends(deps.get_db)

@@ -101,7 +101,7 @@ def get_soil_types(
     return [row[0] for row in soil_types]
 
 
-@router.post("/soil-types/", response_model=SoilTypeValuesScheme, status_code=201, dependencies=[Depends(deps.get_jwt)])
+@router.post("/soil-types/", response_model=SoilTypeValuesScheme, dependencies=[Depends(deps.get_jwt)])
 def create_soil_type(
         soil_type_in: SoilTypeCreate,
         db: Session = Depends(deps.get_db)
