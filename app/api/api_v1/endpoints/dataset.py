@@ -11,7 +11,7 @@ from models import User, Dataset, SoilTypeValues
 from schemas import Dataset as DatasetScheme
 from schemas import WeightScheme
 from schemas import Message
-from schemas import IrrigationDatapoints, SoilTypes
+from schemas import IrrigationDatapoints, SoilTypeCreate, SoilTypeValuesScheme
 from crud import dataset as crud_dataset
 from api.deps import get_jwt
 
@@ -101,6 +101,32 @@ def get_soil_types(
     return [row[0] for row in soil_types]
 
 
+@router.post("/soil-types/", response_model=SoilTypeValuesScheme, status_code=201, dependencies=[Depends(deps.get_jwt)])
+def create_soil_type(
+        soil_type_in: SoilTypeCreate,
+        db: Session = Depends(deps.get_db)
+):
+    """
+    Adds a new soil type with its field capacity and wilting point values.
+    Rejects the request if the soil type already exists.
+    """
+
+    exists = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == soil_type_in.soil_type).first()
+    if exists:
+        raise HTTPException(status_code=409, detail=f"Soil type '{soil_type_in.soil_type}' already exists")
+
+    db_obj = SoilTypeValues(
+        soil_type=soil_type_in.soil_type,
+        field_capacity=soil_type_in.field_capacity,
+        wilting_point=soil_type_in.wilting_point
+    )
+    db.add(db_obj)
+    db.commit()
+    db.refresh(db_obj)
+
+    return db_obj
+
+
 @router.get("/{dataset_id}/", dependencies=[Depends(deps.get_jwt)])
 async def get_dataset(
         dataset_id: str,
@@ -138,7 +164,7 @@ def remove_dataset(
 def analyse_soil_moisture(
         dataset_id: str,
         db: Session = Depends(deps.get_db),
-        soil: Optional[SoilTypes] = None,
+        soil: Optional[str] = None,
         formatting: Literal["JSON", "JSON-LD"] = "JSON-LD"
 ):
     dataset: list[Dataset] = crud_dataset.get_datasets(db, dataset_id)
@@ -150,7 +176,7 @@ def analyse_soil_moisture(
     field_capacity = None
     wilting_point = None
     if soil:
-        query_row = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == soil.value).first()
+        query_row = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == soil).first()
         if query_row is None:
             raise HTTPException(status_code=404, detail="Soil type not found")
 
@@ -170,7 +196,7 @@ def analyse_soil_moisture(
 def get_irrigation_datapoints(
         dataset_id: str,
         db: Session = Depends(deps.get_db),
-        soil: Optional[SoilTypes] = None
+        soil: Optional[str] = None
 ):
     """
         Returns high dose irrigation datapoints for easier charts representation
@@ -184,7 +210,7 @@ def get_irrigation_datapoints(
     field_capacity = None
     wilting_point = None
     if soil:
-        query_row = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == soil.value).first()
+        query_row = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == soil).first()
         if query_row is None:
             raise HTTPException(status_code=404, detail="Soil type not found")
 

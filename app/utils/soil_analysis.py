@@ -1,7 +1,7 @@
 from typing import List, Dict, Union, Tuple, Optional
 
 from schemas import Dataset as DatasetScheme
-from schemas import DatasetAnalysis, IrrigationDatapoints, DataPoints, SoilTypes
+from schemas import DatasetAnalysis, IrrigationDatapoints, DataPoints
 
 from datetime import datetime
 
