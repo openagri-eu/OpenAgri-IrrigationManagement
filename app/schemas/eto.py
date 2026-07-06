@@ -1,13 +1,9 @@
 import datetime
 from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from enum import Enum
-
-class Crop(str, Enum):
-    sugar_beet = "sugar_beet"
-    potato = "potato"
 
 
 class KcStage(str, Enum):
@@ -48,3 +44,24 @@ class EtoCreate(BaseModel):
 
 class EtoUpdate(BaseModel):
     pass
+
+
+class CropCreate(BaseModel):
+    crop: str = Field(..., min_length=1, max_length=64)
+    kc_init: float = Field(..., gt=0, lt=2)
+    kc_mid: float = Field(..., gt=0, lt=2)
+    kc_end: float = Field(..., gt=0, lt=2)
+
+    @field_validator("crop")
+    @classmethod
+    def normalize_crop(cls, v: str) -> str:
+        return v.strip().lower().replace(" ", "_")
+
+
+class CropKcScheme(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    crop: str
+    kc_init: float
+    kc_mid: float
+    kc_end: float

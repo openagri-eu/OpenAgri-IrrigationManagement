@@ -8,7 +8,7 @@ from retry_requests import retry
 from sqlalchemy.orm import Session
 
 import crud
-from schemas import EToResponse, Calculation, EtoCreate, Crop, KcStage
+from schemas import EToResponse, Calculation, EtoCreate, KcStage
 from models import CropKc
 
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
@@ -23,13 +23,13 @@ def fetch_historical_eto_for_location(
         from_date: datetime.date,
         to_date: datetime.date,
         db: Session,
-        crop: Optional[Crop] = None,
+        crop: Optional[str] = None,
         stage: Optional[KcStage] = None,
 ) -> Optional[EToResponse]:
 
     kc_value = None
     if crop and stage:
-        kc_row = db.query(CropKc).filter(CropKc.crop == crop.value).first()
+        kc_row = db.query(CropKc).filter(CropKc.crop == crop).first()
         if kc_row:
             if stage == KcStage.kc_init:
                 kc_value = kc_row.kc_init
