@@ -89,3 +89,22 @@ class SoilTypeCreate(BaseModel):
     @classmethod
     def normalize_soil_type(cls, v: str) -> str:
         return v.strip().lower().replace(" ", "_")
+
+
+class SoilTypeUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    soil_type: Optional[str] = Field(default=None, min_length=1, max_length=64)
+    field_capacity: Optional[float] = Field(default=None, gt=0, lt=1)
+    wilting_point: Optional[float] = Field(default=None, gt=0, lt=1)
+
+    @field_validator("soil_type")
+    @classmethod
+    def normalize_soil_type(cls, v: Optional[str]) -> Optional[str]:
+        return v.strip().lower().replace(" ", "_") if v is not None else v
+
+    @model_validator(mode="after")
+    def check_at_least_one_field(self) -> "SoilTypeUpdate":
+        if self.soil_type is None and self.field_capacity is None and self.wilting_point is None:
+            raise ValueError("At least one field must be provided to update")
+        return self
