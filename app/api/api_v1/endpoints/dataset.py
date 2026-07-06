@@ -11,7 +11,7 @@ from models import User, Dataset, SoilTypeValues
 from schemas import Dataset as DatasetScheme
 from schemas import WeightScheme
 from schemas import Message
-from schemas import IrrigationDatapoints, SoilTypeCreate, SoilTypeValuesScheme
+from schemas import IrrigationDatapoints, SoilTypeCreate
 from crud import dataset as crud_dataset
 from api.deps import get_jwt
 
@@ -101,7 +101,7 @@ def get_soil_types(
     return [row[0] for row in soil_types]
 
 
-@router.post("/soil-types/", response_model=SoilTypeValuesScheme, dependencies=[Depends(deps.get_jwt)])
+@router.post("/soil-types/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
 def create_soil_type(
         soil_type_in: SoilTypeCreate,
         db: Session = Depends(deps.get_db)
@@ -122,9 +122,8 @@ def create_soil_type(
     )
     db.add(db_obj)
     db.commit()
-    db.refresh(db_obj)
 
-    return db_obj
+    return Message(message=f"Soil type '{soil_type_in.soil_type}' successfully added")
 
 
 @router.delete("/soil-types/{soil_type}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])

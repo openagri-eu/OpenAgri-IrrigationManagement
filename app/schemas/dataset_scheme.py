@@ -89,11 +89,3 @@ class SoilTypeCreate(BaseModel):
     @classmethod
     def normalize_soil_type(cls, v: str) -> str:
         return v.strip().lower().replace(" ", "_")
-
-
-class SoilTypeValuesScheme(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    soil_type: str
-    field_capacity: float
-    wilting_point: float

@@ -56,12 +56,3 @@ class CropCreate(BaseModel):
     @classmethod
     def normalize_crop(cls, v: str) -> str:
         return v.strip().lower().replace(" ", "_")
-
-
-class CropKcScheme(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    crop: str
-    kc_init: float
-    kc_mid: float
-    kc_end: float
