@@ -9,7 +9,7 @@ from api import deps
 import crud
 from api.deps import get_jwt
 
-from schemas import EToResponse, Calculation, KcStage, CropCreate, Message
+from schemas import EToResponse, Calculation, KcStage, CropCreate, CropUpdate, Message
 from models import CropKc
 from utils import jsonld_eto_response, fetch_parcel_by_id, fetch_parcel_lat_lon, TimeUnit, fetch_weather_data, fetch_historical_eto_for_location
 
@@ -59,6 +59,40 @@ def create_crop_type(
     db.commit()
 
     return Message(message=f"Crop '{crop_in.crop}' successfully added")
+
+
+@router.put("/crop-types/{crop}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
+def update_crop_type(
+        crop: str,
+        crop_in: CropUpdate,
+        db: Session = Depends(deps.get_db)
+):
+    """
+    Updates a crop's name and/or Kc coefficients (init/mid/end).
+    All fields are optional - only the provided ones are changed.
+    """
+
+    normalized = crop.strip().lower().replace(" ", "_")
+
+    query_row = db.query(CropKc).filter(CropKc.crop == normalized).first()
+    if query_row is None:
+        raise HTTPException(status_code=404, detail=f"Crop '{crop}' not found")
+
+    update_data = crop_in.model_dump(exclude_unset=True)
+
+    new_crop = update_data.pop("crop", None)
+    if new_crop is not None and new_crop != normalized:
+        exists = db.query(CropKc).filter(CropKc.crop == new_crop).first()
+        if exists:
+            raise HTTPException(status_code=409, detail=f"Crop '{new_crop}' already exists")
+        query_row.crop = new_crop
+
+    for key, value in update_data.items():
+        setattr(query_row, key, value)
+
+    db.commit()
+
+    return Message(message=f"Crop '{normalized}' successfully updated")
 
 
 @router.delete("/crop-types/{crop}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])

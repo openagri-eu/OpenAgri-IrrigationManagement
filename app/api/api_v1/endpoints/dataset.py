@@ -11,7 +11,7 @@ from models import User, Dataset, SoilTypeValues
 from schemas import Dataset as DatasetScheme
 from schemas import WeightScheme
 from schemas import Message
-from schemas import IrrigationDatapoints, SoilTypeCreate
+from schemas import IrrigationDatapoints, SoilTypeCreate, SoilTypeUpdate
 from crud import dataset as crud_dataset
 from api.deps import get_jwt
 
@@ -124,6 +124,40 @@ def create_soil_type(
     db.commit()
 
     return Message(message=f"Soil type '{soil_type_in.soil_type}' successfully added")
+
+
+@router.put("/soil-types/{soil_type}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
+def update_soil_type(
+        soil_type: str,
+        soil_type_in: SoilTypeUpdate,
+        db: Session = Depends(deps.get_db)
+):
+    """
+    Updates a soil type's name and/or field capacity/wilting point values.
+    All fields are optional - only the provided ones are changed.
+    """
+
+    normalized = soil_type.strip().lower().replace(" ", "_")
+
+    query_row = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == normalized).first()
+    if query_row is None:
+        raise HTTPException(status_code=404, detail=f"Soil type '{soil_type}' not found")
+
+    update_data = soil_type_in.model_dump(exclude_unset=True)
+
+    new_soil_type = update_data.pop("soil_type", None)
+    if new_soil_type is not None and new_soil_type != normalized:
+        exists = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == new_soil_type).first()
+        if exists:
+            raise HTTPException(status_code=409, detail=f"Soil type '{new_soil_type}' already exists")
+        query_row.soil_type = new_soil_type
+
+    for key, value in update_data.items():
+        setattr(query_row, key, value)
+
+    db.commit()
+
+    return Message(message=f"Soil type '{normalized}' successfully updated")
 
 
 @router.delete("/soil-types/{soil_type}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
