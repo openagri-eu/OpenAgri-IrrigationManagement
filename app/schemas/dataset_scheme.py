@@ -1,10 +1,9 @@
 import math
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
+from typing import List, Optional
 from datetime import datetime
 
-from enum import Enum
 
 class WeightScheme(BaseModel):
     val_10: float = Field(..., alias='10')
@@ -81,18 +80,12 @@ class IrrigationDatapoints(BaseModel):
     stress_level: float
 
 
-class SoilTypes(str, Enum):
-    SAND = "sand"
-    LOAMY_SAND = "loamy_sand"
-    SANDY_LOAM = "sandy_loam"
-    LOAM = "loam"
-    SILT_LOAM = "silt_loam"
-    SILT = "silt"
-    SANDY_CLAY_LOAM = "sandy_clay_loam"
-    CLAY_LOAM = "clay_loam"
-    SILTY_CLAY_LOAM = "silty_clay_loam"
-    SANDY_CLAY = "sandy_clay"
-    SILTY_CLAY = "silty_clay"
-    CLAY = "clay"
-    PEAT = "peat"
-    CHALK = "chalk"
+class SoilTypeCreate(BaseModel):
+    soil_type: str = Field(..., min_length=1, max_length=64)
+    field_capacity: float = Field(..., gt=0, lt=1)
+    wilting_point: float = Field(..., gt=0, lt=1)
+
+    @field_validator("soil_type")
+    @classmethod
+    def normalize_soil_type(cls, v: str) -> str:
+        return v.strip().lower().replace(" ", "_")

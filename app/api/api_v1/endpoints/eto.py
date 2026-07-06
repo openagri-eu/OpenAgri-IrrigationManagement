@@ -9,7 +9,7 @@ from api import deps
 import crud
 from api.deps import get_jwt
 
-from schemas import EToResponse, Calculation, Crop, KcStage
+from schemas import EToResponse, Calculation, KcStage, CropCreate, Message
 from models import CropKc
 from utils import jsonld_eto_response, fetch_parcel_by_id, fetch_parcel_lat_lon, TimeUnit, fetch_weather_data, fetch_historical_eto_for_location
 
@@ -35,13 +35,60 @@ def get_crop_types(
     }
 
 
+@router.post("/crop-types/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
+def create_crop_type(
+        crop_in: CropCreate,
+        db: Session = Depends(deps.get_db)
+):
+    """
+    Adds a new crop type with its Kc coefficients (init/mid/end).
+    Rejects the request if the crop already exists.
+    """
+
+    exists = db.query(CropKc).filter(CropKc.crop == crop_in.crop).first()
+    if exists:
+        raise HTTPException(status_code=409, detail=f"Crop '{crop_in.crop}' already exists")
+
+    db_obj = CropKc(
+        crop=crop_in.crop,
+        kc_init=crop_in.kc_init,
+        kc_mid=crop_in.kc_mid,
+        kc_end=crop_in.kc_end
+    )
+    db.add(db_obj)
+    db.commit()
+
+    return Message(message=f"Crop '{crop_in.crop}' successfully added")
+
+
+@router.delete("/crop-types/{crop}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
+def delete_crop_type(
+        crop: str,
+        db: Session = Depends(deps.get_db)
+):
+    """
+    Deletes a crop type by name.
+    """
+
+    normalized = crop.strip().lower().replace(" ", "_")
+
+    query_row = db.query(CropKc).filter(CropKc.crop == normalized).first()
+    if query_row is None:
+        raise HTTPException(status_code=404, detail=f"Crop '{crop}' not found")
+
+    db.delete(query_row)
+    db.commit()
+
+    return Message(message=f"Crop '{normalized}' successfully deleted")
+
+
 @router.get("/get-calculations/{location_id}/from/{from_date}/to/{to_date}/", dependencies=[Depends(get_jwt)])
 def get_calculations(
     location_id: int,
     from_date: datetime.date,
     to_date: datetime.date,
     db: Session = Depends(deps.get_db),
-    crop: Optional[Crop] = None,
+    crop: Optional[str] = None,
     stage: Optional[KcStage] = None,
     formatting: Literal["JSON", "JSON-LD"] = "JSON"
 ):
@@ -65,7 +112,7 @@ def get_calculations(
 
     kc_value = None
     if crop and stage:
-        kc_row = db.query(CropKc).filter(CropKc.crop == crop.value).first()
+        kc_row = db.query(CropKc).filter(CropKc.crop == crop).first()
         if kc_row is None:
             raise HTTPException(404, f"No KC coefficients found for crop {crop}")
 
@@ -107,7 +154,7 @@ def calculate_eto_via_gk(
         to_date: datetime.date,
         access_token: str = Depends(get_jwt),
         db: Session = Depends(deps.get_db),
-        crop: Optional[Crop] = None,
+        crop: Optional[str] = None,
         stage: Optional[KcStage] = None,
         formatting: Literal["JSON", "JSON-LD"] = "JSON"
 ):
@@ -144,7 +191,7 @@ def calculate_eto_via_gk(
 
     kc_value = None
     if crop and stage:
-        kc_row = db.query(CropKc).filter(CropKc.crop == crop.value).first()
+        kc_row = db.query(CropKc).filter(CropKc.crop == crop).first()
         if kc_row is None:
             raise HTTPException(404, f"No KC coefficients found for crop {crop}")
 
@@ -187,7 +234,7 @@ def calculate_eto_by_coordinates(
         to_date: datetime.date,
         db: Session = Depends(deps.get_db),
         access_token: str = Depends(get_jwt),
-        crop: Optional[Crop] = None,
+        crop: Optional[str] = None,
         stage: Optional[KcStage] = None,
         formatting: Literal["JSON", "JSON-LD"] = "JSON"
 ):
@@ -219,7 +266,7 @@ def calculate_eto_by_coordinates(
 
     kc_value = None
     if crop and stage:
-        kc_row = db.query(CropKc).filter(CropKc.crop == crop.value).first()
+        kc_row = db.query(CropKc).filter(CropKc.crop == crop).first()
         if kc_row is None:
             raise HTTPException(404, f"No KC coefficients found for crop {crop}")
 
@@ -256,7 +303,7 @@ def fetch_and_store_eto(
     from_date: datetime.date,
     to_date: datetime.date,
     db: Session = Depends(deps.get_db),
-    crop: Optional[Crop] = None,
+    crop: Optional[str] = None,
     stage: Optional[KcStage] = None,
     formatting: Literal["JSON", "JSON-LD"] = "JSON"
 ):
