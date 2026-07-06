@@ -127,6 +127,27 @@ def create_soil_type(
     return db_obj
 
 
+@router.delete("/soil-types/{soil_type}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
+def delete_soil_type(
+        soil_type: str,
+        db: Session = Depends(deps.get_db)
+):
+    """
+    Deletes a soil type by name.
+    """
+
+    normalized = soil_type.strip().lower().replace(" ", "_")
+
+    query_row = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == normalized).first()
+    if query_row is None:
+        raise HTTPException(status_code=404, detail=f"Soil type '{soil_type}' not found")
+
+    db.delete(query_row)
+    db.commit()
+
+    return Message(message=f"Soil type '{normalized}' successfully deleted")
+
+
 @router.get("/{dataset_id}/", dependencies=[Depends(deps.get_jwt)])
 async def get_dataset(
         dataset_id: str,
