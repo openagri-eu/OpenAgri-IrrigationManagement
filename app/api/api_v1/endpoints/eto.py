@@ -1,6 +1,7 @@
 import datetime
+import uuid
 
-from typing import Literal, Optional, List, Dict
+from typing import Literal, Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -9,30 +10,22 @@ from api import deps
 import crud
 from api.deps import get_jwt
 
-from schemas import EToResponse, Calculation, KcStage, CropCreate, CropUpdate, Message
+from schemas import EToResponse, Calculation, KcStage, CropCreate, CropUpdate, CropKcScheme, Message
 from models import CropKc
 from utils import jsonld_eto_response, fetch_parcel_by_id, fetch_parcel_lat_lon, TimeUnit, fetch_weather_data, fetch_historical_eto_for_location
 
 router = APIRouter()
 
-@router.get("/option-types/", response_model=Dict[str, List[str]], dependencies=[Depends(deps.get_jwt)])
+@router.get("/option-types/", response_model=List[CropKcScheme], dependencies=[Depends(deps.get_jwt)])
 def get_crop_types(
     db: Session = Depends(deps.get_db)
 ):
     """
-    Returns Crop types from DB.
+    Returns Crop types from DB, including their id.
     Used to populate dropdowns in the frontend.
     """
 
-    crops_query = db.query(CropKc.crop).all()
-    crops_list = [row[0] for row in crops_query]
-
-    stages_list = [stage.value for stage in KcStage]
-
-    return {
-        "crops": crops_list,
-        "stages": stages_list
-    }
+    return db.query(CropKc).all()
 
 
 @router.post("/crop-types/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
@@ -61,9 +54,9 @@ def create_crop_type(
     return Message(message=f"Crop '{crop_in.crop}' successfully added")
 
 
-@router.put("/crop-types/{crop}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
+@router.put("/crop-types/{crop_id}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
 def update_crop_type(
-        crop: str,
+        crop_id: uuid.UUID,
         crop_in: CropUpdate,
         db: Session = Depends(deps.get_db)
 ):
@@ -72,16 +65,14 @@ def update_crop_type(
     All fields are optional - only the provided ones are changed.
     """
 
-    normalized = crop.strip().lower().replace(" ", "_")
-
-    query_row = db.query(CropKc).filter(CropKc.crop == normalized).first()
+    query_row = db.query(CropKc).filter(CropKc.id == crop_id).first()
     if query_row is None:
-        raise HTTPException(status_code=404, detail=f"Crop '{crop}' not found")
+        raise HTTPException(status_code=404, detail=f"Crop with id '{crop_id}' not found")
 
     update_data = crop_in.model_dump(exclude_unset=True)
 
     new_crop = update_data.pop("crop", None)
-    if new_crop is not None and new_crop != normalized:
+    if new_crop is not None and new_crop != query_row.crop:
         exists = db.query(CropKc).filter(CropKc.crop == new_crop).first()
         if exists:
             raise HTTPException(status_code=409, detail=f"Crop '{new_crop}' already exists")
@@ -92,28 +83,27 @@ def update_crop_type(
 
     db.commit()
 
-    return Message(message=f"Crop '{normalized}' successfully updated")
+    return Message(message=f"Crop '{query_row.crop}' successfully updated")
 
 
-@router.delete("/crop-types/{crop}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
+@router.delete("/crop-types/{crop_id}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
 def delete_crop_type(
-        crop: str,
+        crop_id: uuid.UUID,
         db: Session = Depends(deps.get_db)
 ):
     """
-    Deletes a crop type by name.
+    Deletes a crop type by id.
     """
 
-    normalized = crop.strip().lower().replace(" ", "_")
-
-    query_row = db.query(CropKc).filter(CropKc.crop == normalized).first()
+    query_row = db.query(CropKc).filter(CropKc.id == crop_id).first()
     if query_row is None:
-        raise HTTPException(status_code=404, detail=f"Crop '{crop}' not found")
+        raise HTTPException(status_code=404, detail=f"Crop with id '{crop_id}' not found")
 
+    deleted_name = query_row.crop
     db.delete(query_row)
     db.commit()
 
-    return Message(message=f"Crop '{normalized}' successfully deleted")
+    return Message(message=f"Crop '{deleted_name}' successfully deleted")
 
 
 @router.get("/get-calculations/{location_id}/from/{from_date}/to/{to_date}/", dependencies=[Depends(get_jwt)])
@@ -122,7 +112,7 @@ def get_calculations(
     from_date: datetime.date,
     to_date: datetime.date,
     db: Session = Depends(deps.get_db),
-    crop: Optional[str] = None,
+    crop: Optional[uuid.UUID] = None,
     stage: Optional[KcStage] = None,
     formatting: Literal["JSON", "JSON-LD"] = "JSON"
 ):
@@ -146,7 +136,7 @@ def get_calculations(
 
     kc_value = None
     if crop and stage:
-        kc_row = db.query(CropKc).filter(CropKc.crop == crop).first()
+        kc_row = db.query(CropKc).filter(CropKc.id == crop).first()
         if kc_row is None:
             raise HTTPException(404, f"No KC coefficients found for crop {crop}")
 
@@ -188,7 +178,7 @@ def calculate_eto_via_gk(
         to_date: datetime.date,
         access_token: str = Depends(get_jwt),
         db: Session = Depends(deps.get_db),
-        crop: Optional[str] = None,
+        crop: Optional[uuid.UUID] = None,
         stage: Optional[KcStage] = None,
         formatting: Literal["JSON", "JSON-LD"] = "JSON"
 ):
@@ -225,7 +215,7 @@ def calculate_eto_via_gk(
 
     kc_value = None
     if crop and stage:
-        kc_row = db.query(CropKc).filter(CropKc.crop == crop).first()
+        kc_row = db.query(CropKc).filter(CropKc.id == crop).first()
         if kc_row is None:
             raise HTTPException(404, f"No KC coefficients found for crop {crop}")
 
@@ -268,7 +258,7 @@ def calculate_eto_by_coordinates(
         to_date: datetime.date,
         db: Session = Depends(deps.get_db),
         access_token: str = Depends(get_jwt),
-        crop: Optional[str] = None,
+        crop: Optional[uuid.UUID] = None,
         stage: Optional[KcStage] = None,
         formatting: Literal["JSON", "JSON-LD"] = "JSON"
 ):
@@ -300,7 +290,7 @@ def calculate_eto_by_coordinates(
 
     kc_value = None
     if crop and stage:
-        kc_row = db.query(CropKc).filter(CropKc.crop == crop).first()
+        kc_row = db.query(CropKc).filter(CropKc.id == crop).first()
         if kc_row is None:
             raise HTTPException(404, f"No KC coefficients found for crop {crop}")
 
@@ -337,7 +327,7 @@ def fetch_and_store_eto(
     from_date: datetime.date,
     to_date: datetime.date,
     db: Session = Depends(deps.get_db),
-    crop: Optional[str] = None,
+    crop: Optional[uuid.UUID] = None,
     stage: Optional[KcStage] = None,
     formatting: Literal["JSON", "JSON-LD"] = "JSON"
 ):

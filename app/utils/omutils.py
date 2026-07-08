@@ -1,4 +1,5 @@
 import datetime
+import uuid
 from datetime import timezone, timedelta
 from typing import Optional
 
@@ -23,13 +24,13 @@ def fetch_historical_eto_for_location(
         from_date: datetime.date,
         to_date: datetime.date,
         db: Session,
-        crop: Optional[str] = None,
+        crop: Optional[uuid.UUID] = None,
         stage: Optional[KcStage] = None,
 ) -> Optional[EToResponse]:
 
     kc_value = None
     if crop and stage:
-        kc_row = db.query(CropKc).filter(CropKc.crop == crop).first()
+        kc_row = db.query(CropKc).filter(CropKc.id == crop).first()
         if kc_row:
             if stage == KcStage.kc_init:
                 kc_value = kc_row.kc_init

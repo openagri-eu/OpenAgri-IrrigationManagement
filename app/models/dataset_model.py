@@ -1,4 +1,7 @@
+import uuid
+
 from sqlalchemy import Column, Integer, Float, Date, String
+from sqlalchemy.dialects.postgresql import UUID
 
 from db.base_class import Base
 
@@ -23,7 +26,8 @@ class Dataset(Base):
 class SoilTypeValues(Base):
     __tablename__ = "soil_type_values"
 
-    soil_type = Column(String, primary_key=True, unique=True, nullable=False)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, nullable=False)
+    soil_type = Column(String, unique=True, nullable=False)
 
     field_capacity = Column(Float, nullable=False)
     wilting_point = Column(Float, nullable=False)
