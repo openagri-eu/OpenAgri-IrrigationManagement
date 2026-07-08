@@ -1,4 +1,5 @@
 import datetime
+import uuid
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -76,3 +77,13 @@ class CropUpdate(BaseModel):
         if self.crop is None and self.kc_init is None and self.kc_mid is None and self.kc_end is None:
             raise ValueError("At least one field must be provided to update")
         return self
+
+
+class CropKcScheme(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    crop: str
+    kc_init: float
+    kc_mid: float
+    kc_end: float

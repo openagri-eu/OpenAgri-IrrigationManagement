@@ -1,4 +1,5 @@
 import math
+import uuid
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator, field_validator
 from typing import List, Optional
@@ -108,3 +109,12 @@ class SoilTypeUpdate(BaseModel):
         if self.soil_type is None and self.field_capacity is None and self.wilting_point is None:
             raise ValueError("At least one field must be provided to update")
         return self
+
+
+class SoilTypeValuesScheme(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    soil_type: str
+    field_capacity: float
+    wilting_point: float

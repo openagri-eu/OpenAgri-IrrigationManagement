@@ -1,4 +1,5 @@
 import datetime
+import uuid
 
 from typing import List, Literal, Optional
 
@@ -11,7 +12,7 @@ from models import User, Dataset, SoilTypeValues
 from schemas import Dataset as DatasetScheme
 from schemas import WeightScheme
 from schemas import Message
-from schemas import IrrigationDatapoints, SoilTypeCreate, SoilTypeUpdate
+from schemas import IrrigationDatapoints, SoilTypeCreate, SoilTypeUpdate, SoilTypeValuesScheme
 from crud import dataset as crud_dataset
 from api.deps import get_jwt
 
@@ -87,18 +88,32 @@ def upload_dataset(
     return Message(message="Successfully uploaded")
 
 
-@router.get("/soil-types/", response_model=List[str], dependencies=[Depends(deps.get_jwt)])
+@router.get("/soil-types/", response_model=List[SoilTypeValuesScheme], dependencies=[Depends(deps.get_jwt)])
 def get_soil_types(
         db: Session = Depends(deps.get_db)
 ):
     """
-    Returns a list of all available soil types (e.g., ['sand', 'loam', ...])
+    Returns a list of all available soil types, including their id.
     Used to populate dropdowns in the frontend.
     """
 
-    soil_types = db.query(SoilTypeValues.soil_type).all()
+    return db.query(SoilTypeValues).all()
 
-    return [row[0] for row in soil_types]
+
+@router.get("/soil-types/{soil_type_id}/", response_model=SoilTypeValuesScheme, dependencies=[Depends(deps.get_jwt)])
+def get_soil_type(
+        soil_type_id: uuid.UUID,
+        db: Session = Depends(deps.get_db)
+):
+    """
+    Returns a single soil type by id.
+    """
+
+    query_row = db.query(SoilTypeValues).filter(SoilTypeValues.id == soil_type_id).first()
+    if query_row is None:
+        raise HTTPException(status_code=404, detail=f"Soil type with id '{soil_type_id}' not found")
+
+    return query_row
 
 
 @router.post("/soil-types/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
@@ -126,9 +141,9 @@ def create_soil_type(
     return Message(message=f"Soil type '{soil_type_in.soil_type}' successfully added")
 
 
-@router.put("/soil-types/{soil_type}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
+@router.put("/soil-types/{soil_type_id}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
 def update_soil_type(
-        soil_type: str,
+        soil_type_id: uuid.UUID,
         soil_type_in: SoilTypeUpdate,
         db: Session = Depends(deps.get_db)
 ):
@@ -137,16 +152,14 @@ def update_soil_type(
     All fields are optional - only the provided ones are changed.
     """
 
-    normalized = soil_type.strip().lower().replace(" ", "_")
-
-    query_row = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == normalized).first()
+    query_row = db.query(SoilTypeValues).filter(SoilTypeValues.id == soil_type_id).first()
     if query_row is None:
-        raise HTTPException(status_code=404, detail=f"Soil type '{soil_type}' not found")
+        raise HTTPException(status_code=404, detail=f"Soil type with id '{soil_type_id}' not found")
 
     update_data = soil_type_in.model_dump(exclude_unset=True)
 
     new_soil_type = update_data.pop("soil_type", None)
-    if new_soil_type is not None and new_soil_type != normalized:
+    if new_soil_type is not None and new_soil_type != query_row.soil_type:
         exists = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == new_soil_type).first()
         if exists:
             raise HTTPException(status_code=409, detail=f"Soil type '{new_soil_type}' already exists")
@@ -157,28 +170,27 @@ def update_soil_type(
 
     db.commit()
 
-    return Message(message=f"Soil type '{normalized}' successfully updated")
+    return Message(message=f"Soil type '{query_row.soil_type}' successfully updated")
 
 
-@router.delete("/soil-types/{soil_type}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
+@router.delete("/soil-types/{soil_type_id}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
 def delete_soil_type(
-        soil_type: str,
+        soil_type_id: uuid.UUID,
         db: Session = Depends(deps.get_db)
 ):
     """
-    Deletes a soil type by name.
+    Deletes a soil type by id.
     """
 
-    normalized = soil_type.strip().lower().replace(" ", "_")
-
-    query_row = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == normalized).first()
+    query_row = db.query(SoilTypeValues).filter(SoilTypeValues.id == soil_type_id).first()
     if query_row is None:
-        raise HTTPException(status_code=404, detail=f"Soil type '{soil_type}' not found")
+        raise HTTPException(status_code=404, detail=f"Soil type with id '{soil_type_id}' not found")
 
+    deleted_name = query_row.soil_type
     db.delete(query_row)
     db.commit()
 
-    return Message(message=f"Soil type '{normalized}' successfully deleted")
+    return Message(message=f"Soil type '{deleted_name}' successfully deleted")
 
 
 @router.get("/{dataset_id}/", dependencies=[Depends(deps.get_jwt)])
@@ -218,7 +230,7 @@ def remove_dataset(
 def analyse_soil_moisture(
         dataset_id: str,
         db: Session = Depends(deps.get_db),
-        soil: Optional[str] = None,
+        soil: Optional[uuid.UUID] = None,
         formatting: Literal["JSON", "JSON-LD"] = "JSON-LD"
 ):
     dataset: list[Dataset] = crud_dataset.get_datasets(db, dataset_id)
@@ -230,7 +242,7 @@ def analyse_soil_moisture(
     field_capacity = None
     wilting_point = None
     if soil:
-        query_row = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == soil).first()
+        query_row = db.query(SoilTypeValues).filter(SoilTypeValues.id == soil).first()
         if query_row is None:
             raise HTTPException(status_code=404, detail="Soil type not found")
 
@@ -250,7 +262,7 @@ def analyse_soil_moisture(
 def get_irrigation_datapoints(
         dataset_id: str,
         db: Session = Depends(deps.get_db),
-        soil: Optional[str] = None
+        soil: Optional[uuid.UUID] = None
 ):
     """
         Returns high dose irrigation datapoints for easier charts representation
@@ -264,7 +276,7 @@ def get_irrigation_datapoints(
     field_capacity = None
     wilting_point = None
     if soil:
-        query_row = db.query(SoilTypeValues).filter(SoilTypeValues.soil_type == soil).first()
+        query_row = db.query(SoilTypeValues).filter(SoilTypeValues.id == soil).first()
         if query_row is None:
             raise HTTPException(status_code=404, detail="Soil type not found")
 
