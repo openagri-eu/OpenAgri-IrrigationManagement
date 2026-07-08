@@ -54,6 +54,22 @@ def create_crop_type(
     return Message(message=f"Crop '{crop_in.crop}' successfully added")
 
 
+@router.get("/crop-types/{crop_id}/", response_model=CropKcScheme, dependencies=[Depends(deps.get_jwt)])
+def get_crop_type(
+        crop_id: uuid.UUID,
+        db: Session = Depends(deps.get_db)
+):
+    """
+    Returns a single crop type by id.
+    """
+
+    query_row = db.query(CropKc).filter(CropKc.id == crop_id).first()
+    if query_row is None:
+        raise HTTPException(status_code=404, detail=f"Crop with id '{crop_id}' not found")
+
+    return query_row
+
+
 @router.put("/crop-types/{crop_id}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
 def update_crop_type(
         crop_id: uuid.UUID,

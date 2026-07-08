@@ -100,6 +100,22 @@ def get_soil_types(
     return db.query(SoilTypeValues).all()
 
 
+@router.get("/soil-types/{soil_type_id}/", response_model=SoilTypeValuesScheme, dependencies=[Depends(deps.get_jwt)])
+def get_soil_type(
+        soil_type_id: uuid.UUID,
+        db: Session = Depends(deps.get_db)
+):
+    """
+    Returns a single soil type by id.
+    """
+
+    query_row = db.query(SoilTypeValues).filter(SoilTypeValues.id == soil_type_id).first()
+    if query_row is None:
+        raise HTTPException(status_code=404, detail=f"Soil type with id '{soil_type_id}' not found")
+
+    return query_row
+
+
 @router.post("/soil-types/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
 def create_soil_type(
         soil_type_in: SoilTypeCreate,
