@@ -9,6 +9,11 @@ from core import settings
 from schemas import KcStage
 
 
+class FarmCalendarUnavailable(Exception):
+    """Raised when FarmCalendar can't be reached at all (network/proxy failure)."""
+    pass
+
+
 def fetch_farm_crop_by_id(
         access_token: str,
         crop_id: str
@@ -20,10 +25,7 @@ def fetch_farm_crop_by_id(
             headers={"Content-Type": "application/json", "Authorization": "Bearer {}".format(access_token)}
         )
     except RequestException:
-        raise HTTPException(
-            status_code=400,
-            detail="Error during proxy call via gk"
-        )
+        raise FarmCalendarUnavailable()
 
     if response_json.status_code == 404:
         return None

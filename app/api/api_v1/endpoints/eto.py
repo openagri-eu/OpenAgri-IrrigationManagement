@@ -11,7 +11,7 @@ import crud
 from api.deps import get_jwt
 
 from schemas import EToResponse, Calculation, KcStage
-from utils import jsonld_eto_response, fetch_parcel_by_id, fetch_parcel_lat_lon, fetch_farm_crop_by_id, resolve_kc_value, TimeUnit, fetch_weather_data, fetch_historical_eto_for_location
+from utils import jsonld_eto_response, fetch_parcel_by_id, fetch_parcel_lat_lon, fetch_farm_crop_by_id, resolve_kc_value, FarmCalendarUnavailable, TimeUnit, fetch_weather_data, fetch_historical_eto_for_location
 
 router = APIRouter()
 
@@ -20,7 +20,12 @@ def _resolve_kc_value(access_token: str, crop: Optional[uuid.UUID], stage: Optio
     if not crop or not stage:
         return None
 
-    farm_crop = fetch_farm_crop_by_id(access_token=access_token, crop_id=str(crop))
+    try:
+        farm_crop = fetch_farm_crop_by_id(access_token=access_token, crop_id=str(crop))
+    except FarmCalendarUnavailable:
+        # FarmCalendar can't be reached - fall back to plain ETo instead of failing the request
+        return None
+
     if farm_crop is None:
         raise HTTPException(404, f"No crop found in FarmCalendar with id {crop}")
 
