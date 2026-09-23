@@ -22,7 +22,8 @@ def fetch_farm_crop_by_id(
     try:
         response_json = requests.get(
             url=str(settings.GATEKEEPER_BASE_URL).strip("/") + "/api/proxy/farmcalendar/api/v1/FarmCrops/{}/?format=json".format(crop_id),
-            headers={"Content-Type": "application/json", "Authorization": "Bearer {}".format(access_token)}
+            headers={"Content-Type": "application/json", "Authorization": "Bearer {}".format(access_token)},
+            timeout=30
         )
     except RequestException:
         raise FarmCalendarUnavailable()
@@ -30,10 +31,19 @@ def fetch_farm_crop_by_id(
     if response_json.status_code == 404:
         return None
 
+    if response_json.status_code >= 500:
+        raise FarmCalendarUnavailable()
+
+    if not response_json.ok:
+        raise HTTPException(
+            status_code=response_json.status_code,
+            detail="Error fetching crop from FarmCalendar: {}".format(response_json.text[:200])
+        )
+
     return response_json.json()
 
 
-def resolve_kc_value(
+def select_kc_field(
         farm_crop: dict,
         stage: KcStage
 ) -> Optional[float]:

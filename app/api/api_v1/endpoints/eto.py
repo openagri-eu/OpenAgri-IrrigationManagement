@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from typing import Literal, Optional
+from typing import Literal, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -11,14 +11,26 @@ import crud
 from api.deps import get_jwt
 
 from schemas import EToResponse, Calculation, KcStage
-from utils import jsonld_eto_response, fetch_parcel_by_id, fetch_parcel_lat_lon, fetch_farm_crop_by_id, resolve_kc_value, FarmCalendarUnavailable, TimeUnit, fetch_weather_data, fetch_historical_eto_for_location
+from utils import jsonld_eto_response, fetch_parcel_by_id, fetch_parcel_lat_lon, fetch_farm_crop_by_id, select_kc_field, FarmCalendarUnavailable, TimeUnit, fetch_weather_data, fetch_historical_eto_for_location
 
 router = APIRouter()
+
+
+def _apply_kc(calculations: List[Calculation], kc_value: Optional[float]) -> None:
+    if kc_value is None:
+        return
+
+    for c in calculations:
+        if c.value is not None:
+            c.value = c.value * kc_value
 
 
 def _resolve_kc_value(access_token: str, crop: Optional[uuid.UUID], stage: Optional[KcStage]) -> Optional[float]:
     if not crop or not stage:
         return None
+
+    # Not a transient outage - this deployment has no FarmCalendar integration at all
+    deps.is_using_gatekeeper()
 
     try:
         farm_crop = fetch_farm_crop_by_id(access_token=access_token, crop_id=str(crop))
@@ -29,7 +41,7 @@ def _resolve_kc_value(access_token: str, crop: Optional[uuid.UUID], stage: Optio
     if farm_crop is None:
         raise HTTPException(404, f"No crop found in FarmCalendar with id {crop}")
 
-    kc_value = resolve_kc_value(farm_crop, stage)
+    kc_value = select_kc_field(farm_crop, stage)
     if kc_value is None:
         raise HTTPException(404, f"No KC coefficient set for crop {crop}, stage {stage}")
 
@@ -76,12 +88,7 @@ def get_calculations(
             )
         )
 
-    if kc_value is not None:
-        calculations = eto_response.calculations
-
-        for c in calculations:
-            if c.value is not None:
-                c.value = c.value * kc_value
+    _apply_kc(eto_response.calculations, kc_value)
 
     if formatting.lower() == "json":
         return eto_response
@@ -143,12 +150,7 @@ def calculate_eto_via_gk(
         ]
     )
 
-    if kc_value is not None:
-        calculations = response_json.calculations
-
-        for c in calculations:
-            if c.value is not None:
-                c.value = c.value * kc_value
+    _apply_kc(response_json.calculations, kc_value)
 
     if formatting.lower() == "json":
         return response_json
@@ -197,14 +199,11 @@ def calculate_eto_by_coordinates(
 
     kc_value = _resolve_kc_value(access_token=access_token, crop=crop, stage=stage)
 
-    calculations = []
-    for wd in weather_data["data"]:
-        val = wd["values"].get("et0_fao_evapotranspiration")
-
-        if val is not None and kc_value is not None:
-            val = val * kc_value
-
-        calculations.append(Calculation(date=wd["date"], value=val))
+    calculations = [
+        Calculation(date=wd["date"], value=wd["values"].get("et0_fao_evapotranspiration"))
+        for wd in weather_data["data"]
+    ]
+    _apply_kc(calculations, kc_value)
 
     response_obj = EToResponse(calculations=calculations)
 
