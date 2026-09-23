@@ -1,7 +1,7 @@
 import datetime
 import uuid
 
-from typing import Literal, Optional, List
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -10,116 +10,25 @@ from api import deps
 import crud
 from api.deps import get_jwt
 
-from schemas import EToResponse, Calculation, KcStage, CropCreate, CropUpdate, CropKcScheme, Message
-from models import CropKc
-from utils import jsonld_eto_response, fetch_parcel_by_id, fetch_parcel_lat_lon, TimeUnit, fetch_weather_data, fetch_historical_eto_for_location
+from schemas import EToResponse, Calculation, KcStage
+from utils import jsonld_eto_response, fetch_parcel_by_id, fetch_parcel_lat_lon, fetch_farm_crop_by_id, resolve_kc_value, TimeUnit, fetch_weather_data, fetch_historical_eto_for_location
 
 router = APIRouter()
 
-@router.get("/option-types/", response_model=List[CropKcScheme], dependencies=[Depends(deps.get_jwt)])
-def get_crop_types(
-    db: Session = Depends(deps.get_db)
-):
-    """
-    Returns Crop types from DB, including their id.
-    Used to populate dropdowns in the frontend.
-    """
 
-    return db.query(CropKc).all()
+def _resolve_kc_value(access_token: str, crop: Optional[uuid.UUID], stage: Optional[KcStage]) -> Optional[float]:
+    if not crop or not stage:
+        return None
 
+    farm_crop = fetch_farm_crop_by_id(access_token=access_token, crop_id=str(crop))
+    if farm_crop is None:
+        raise HTTPException(404, f"No crop found in FarmCalendar with id {crop}")
 
-@router.post("/crop-types/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
-def create_crop_type(
-        crop_in: CropCreate,
-        db: Session = Depends(deps.get_db)
-):
-    """
-    Adds a new crop type with its Kc coefficients (init/mid/end).
-    Rejects the request if the crop already exists.
-    """
+    kc_value = resolve_kc_value(farm_crop, stage)
+    if kc_value is None:
+        raise HTTPException(404, f"No KC coefficient set for crop {crop}, stage {stage}")
 
-    exists = db.query(CropKc).filter(CropKc.crop == crop_in.crop).first()
-    if exists:
-        raise HTTPException(status_code=409, detail=f"Crop '{crop_in.crop}' already exists")
-
-    db_obj = CropKc(
-        crop=crop_in.crop,
-        kc_init=crop_in.kc_init,
-        kc_mid=crop_in.kc_mid,
-        kc_end=crop_in.kc_end
-    )
-    db.add(db_obj)
-    db.commit()
-
-    return Message(message=f"Crop '{crop_in.crop}' successfully added")
-
-
-@router.get("/crop-types/{crop_id}/", response_model=CropKcScheme, dependencies=[Depends(deps.get_jwt)])
-def get_crop_type(
-        crop_id: uuid.UUID,
-        db: Session = Depends(deps.get_db)
-):
-    """
-    Returns a single crop type by id.
-    """
-
-    query_row = db.query(CropKc).filter(CropKc.id == crop_id).first()
-    if query_row is None:
-        raise HTTPException(status_code=404, detail=f"Crop with id '{crop_id}' not found")
-
-    return query_row
-
-
-@router.put("/crop-types/{crop_id}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
-def update_crop_type(
-        crop_id: uuid.UUID,
-        crop_in: CropUpdate,
-        db: Session = Depends(deps.get_db)
-):
-    """
-    Updates a crop's name and/or Kc coefficients (init/mid/end).
-    All fields are optional - only the provided ones are changed.
-    """
-
-    query_row = db.query(CropKc).filter(CropKc.id == crop_id).first()
-    if query_row is None:
-        raise HTTPException(status_code=404, detail=f"Crop with id '{crop_id}' not found")
-
-    update_data = crop_in.model_dump(exclude_unset=True)
-
-    new_crop = update_data.pop("crop", None)
-    if new_crop is not None and new_crop != query_row.crop:
-        exists = db.query(CropKc).filter(CropKc.crop == new_crop).first()
-        if exists:
-            raise HTTPException(status_code=409, detail=f"Crop '{new_crop}' already exists")
-        query_row.crop = new_crop
-
-    for key, value in update_data.items():
-        setattr(query_row, key, value)
-
-    db.commit()
-
-    return Message(message=f"Crop '{query_row.crop}' successfully updated")
-
-
-@router.delete("/crop-types/{crop_id}/", response_model=Message, dependencies=[Depends(deps.get_jwt)])
-def delete_crop_type(
-        crop_id: uuid.UUID,
-        db: Session = Depends(deps.get_db)
-):
-    """
-    Deletes a crop type by id.
-    """
-
-    query_row = db.query(CropKc).filter(CropKc.id == crop_id).first()
-    if query_row is None:
-        raise HTTPException(status_code=404, detail=f"Crop with id '{crop_id}' not found")
-
-    deleted_name = query_row.crop
-    db.delete(query_row)
-    db.commit()
-
-    return Message(message=f"Crop '{deleted_name}' successfully deleted")
+    return kc_value
 
 
 @router.get("/get-calculations/{location_id}/from/{from_date}/to/{to_date}/", dependencies=[Depends(get_jwt)])
@@ -128,6 +37,7 @@ def get_calculations(
     from_date: datetime.date,
     to_date: datetime.date,
     db: Session = Depends(deps.get_db),
+    access_token: str = Depends(get_jwt),
     crop: Optional[uuid.UUID] = None,
     stage: Optional[KcStage] = None,
     formatting: Literal["JSON", "JSON-LD"] = "JSON"
@@ -150,19 +60,7 @@ def get_calculations(
             detail="Error, location with ID:{} does not exist.".format(location_id)
         )
 
-    kc_value = None
-    if crop and stage:
-        kc_row = db.query(CropKc).filter(CropKc.id == crop).first()
-        if kc_row is None:
-            raise HTTPException(404, f"No KC coefficients found for crop {crop}")
-
-        if stage == KcStage.kc_init:
-            kc_value = kc_row.kc_init
-        elif stage == KcStage.kc_mid:
-            kc_value = kc_row.kc_mid
-        elif stage == KcStage.kc_end:
-            kc_value = kc_row.kc_end
-
+    kc_value = _resolve_kc_value(access_token=access_token, crop=crop, stage=stage)
 
     eto_response = EToResponse(
             calculations=crud.eto.get_calculations(
@@ -229,19 +127,7 @@ def calculate_eto_via_gk(
             detail="Error during weather data fetch, none found"
         )
 
-    kc_value = None
-    if crop and stage:
-        kc_row = db.query(CropKc).filter(CropKc.id == crop).first()
-        if kc_row is None:
-            raise HTTPException(404, f"No KC coefficients found for crop {crop}")
-
-        if stage == KcStage.kc_init:
-            kc_value = kc_row.kc_init
-        elif stage == KcStage.kc_mid:
-            kc_value = kc_row.kc_mid
-        elif stage == KcStage.kc_end:
-            kc_value = kc_row.kc_end
-
+    kc_value = _resolve_kc_value(access_token=access_token, crop=crop, stage=stage)
 
     response_json = EToResponse(
         calculations=[
@@ -304,19 +190,7 @@ def calculate_eto_by_coordinates(
             detail="No weather data found for these coordinates/dates."
         )
 
-    kc_value = None
-    if crop and stage:
-        kc_row = db.query(CropKc).filter(CropKc.id == crop).first()
-        if kc_row is None:
-            raise HTTPException(404, f"No KC coefficients found for crop {crop}")
-
-        if stage == KcStage.kc_init:
-            kc_value = kc_row.kc_init
-        elif stage == KcStage.kc_mid:
-            kc_value = kc_row.kc_mid
-        elif stage == KcStage.kc_end:
-            kc_value = kc_row.kc_end
-
+    kc_value = _resolve_kc_value(access_token=access_token, crop=crop, stage=stage)
 
     calculations = []
     for wd in weather_data["data"]:
@@ -335,7 +209,7 @@ def calculate_eto_by_coordinates(
         return jsonld_eto_response(response_obj)
 
 
-@router.get("/fetch-and-store-eto/", dependencies=[Depends(get_jwt)])
+@router.get("/fetch-and-store-eto/")
 def fetch_and_store_eto(
     location_id: int,
     latitude: float,
@@ -343,6 +217,7 @@ def fetch_and_store_eto(
     from_date: datetime.date,
     to_date: datetime.date,
     db: Session = Depends(deps.get_db),
+    access_token: str = Depends(get_jwt),
     crop: Optional[uuid.UUID] = None,
     stage: Optional[KcStage] = None,
     formatting: Literal["JSON", "JSON-LD"] = "JSON"
@@ -353,6 +228,8 @@ def fetch_and_store_eto(
             detail=f"from_date must be later than to_date, from_date: {from_date} | to_date: {to_date}"
         )
 
+    kc_value = _resolve_kc_value(access_token=access_token, crop=crop, stage=stage)
+
     response_json = fetch_historical_eto_for_location(
         location_id=location_id,
         latitude=latitude,
@@ -360,8 +237,7 @@ def fetch_and_store_eto(
         from_date=from_date,
         to_date=to_date,
         db=db,
-        crop=crop,
-        stage=stage
+        kc_value=kc_value
     )
 
     if response_json is None:

@@ -1,9 +1,49 @@
+from typing import Optional
+
 import requests
 from fastapi import HTTPException
 from requests import RequestException
 from shapely import wkt, errors
 
 from core import settings
+from schemas import KcStage
+
+
+def fetch_farm_crop_by_id(
+        access_token: str,
+        crop_id: str
+):
+
+    try:
+        response_json = requests.get(
+            url=str(settings.GATEKEEPER_BASE_URL).strip("/") + "/api/proxy/farmcalendar/api/v1/FarmCrops/{}/?format=json".format(crop_id),
+            headers={"Content-Type": "application/json", "Authorization": "Bearer {}".format(access_token)}
+        )
+    except RequestException:
+        raise HTTPException(
+            status_code=400,
+            detail="Error during proxy call via gk"
+        )
+
+    if response_json.status_code == 404:
+        return None
+
+    return response_json.json()
+
+
+def resolve_kc_value(
+        farm_crop: dict,
+        stage: KcStage
+) -> Optional[float]:
+
+    if stage == KcStage.kc_init:
+        return farm_crop.get("kc_init")
+    elif stage == KcStage.kc_mid:
+        return farm_crop.get("kc_mid")
+    elif stage == KcStage.kc_end:
+        return farm_crop.get("kc_end")
+
+    return None
 
 
 def fetch_parcel_by_id(
