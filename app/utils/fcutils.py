@@ -1,9 +1,61 @@
+from typing import Optional
+
 import requests
 from fastapi import HTTPException
 from requests import RequestException
 from shapely import wkt, errors
 
 from core import settings
+from schemas import KcStage
+
+
+class FarmCalendarUnavailable(Exception):
+    """Raised when FarmCalendar can't be reached at all (network/proxy failure)."""
+    pass
+
+
+def fetch_farm_crop_by_id(
+        access_token: str,
+        crop_id: str
+):
+
+    try:
+        response_json = requests.get(
+            url=str(settings.GATEKEEPER_BASE_URL).strip("/") + "/api/proxy/farmcalendar/api/v1/FarmCrops/{}/?format=json".format(crop_id),
+            headers={"Content-Type": "application/json", "Authorization": "Bearer {}".format(access_token)},
+            timeout=30
+        )
+    except RequestException:
+        raise FarmCalendarUnavailable()
+
+    if response_json.status_code == 404:
+        return None
+
+    if response_json.status_code >= 500:
+        raise FarmCalendarUnavailable()
+
+    if not response_json.ok:
+        raise HTTPException(
+            status_code=response_json.status_code,
+            detail="Error fetching crop from FarmCalendar: {}".format(response_json.text[:200])
+        )
+
+    return response_json.json()
+
+
+def select_kc_field(
+        farm_crop: dict,
+        stage: KcStage
+) -> Optional[float]:
+
+    if stage == KcStage.kc_init:
+        return farm_crop.get("kc_init")
+    elif stage == KcStage.kc_mid:
+        return farm_crop.get("kc_mid")
+    elif stage == KcStage.kc_end:
+        return farm_crop.get("kc_end")
+
+    return None
 
 
 def fetch_parcel_by_id(

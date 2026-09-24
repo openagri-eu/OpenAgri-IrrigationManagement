@@ -1,5 +1,4 @@
 import datetime
-import uuid
 from datetime import timezone, timedelta
 from typing import Optional
 
@@ -9,8 +8,7 @@ from retry_requests import retry
 from sqlalchemy.orm import Session
 
 import crud
-from schemas import EToResponse, Calculation, EtoCreate, KcStage
-from models import CropKc
+from schemas import EToResponse, Calculation, EtoCreate
 
 cache_session = requests_cache.CachedSession('.cache', expire_after=3600)
 retry_session = retry(cache_session, retries=5, backoff_factor=0.2)
@@ -24,20 +22,8 @@ def fetch_historical_eto_for_location(
         from_date: datetime.date,
         to_date: datetime.date,
         db: Session,
-        crop: Optional[uuid.UUID] = None,
-        stage: Optional[KcStage] = None,
+        kc_value: Optional[float] = None,
 ) -> Optional[EToResponse]:
-
-    kc_value = None
-    if crop and stage:
-        kc_row = db.query(CropKc).filter(CropKc.id == crop).first()
-        if kc_row:
-            if stage == KcStage.kc_init:
-                kc_value = kc_row.kc_init
-            elif stage == KcStage.kc_mid:
-                kc_value = kc_row.kc_mid
-            elif stage == KcStage.kc_end:
-                kc_value = kc_row.kc_end
 
     existing_db_records = crud.eto.get_calculations(
         db=db,
