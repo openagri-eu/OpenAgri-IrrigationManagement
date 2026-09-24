@@ -49,13 +49,19 @@ def select_kc_field(
 ) -> Optional[float]:
 
     if stage == KcStage.kc_init:
-        return farm_crop.get("kc_init")
+        raw_value = farm_crop.get("kc_init")
     elif stage == KcStage.kc_mid:
-        return farm_crop.get("kc_mid")
+        raw_value = farm_crop.get("kc_mid")
     elif stage == KcStage.kc_end:
-        return farm_crop.get("kc_end")
+        raw_value = farm_crop.get("kc_end")
+    else:
+        return None
 
-    return None
+    if raw_value is None:
+        return None
+
+    # DRF's DecimalField serializes as a string (e.g. "0.75") by default
+    return float(raw_value)
 
 
 def fetch_parcel_by_id(
